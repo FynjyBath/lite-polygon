@@ -27,7 +27,7 @@ async function compileSolution(problemId, solutionId) {
     fs_1.default.mkdirSync(workdir, { recursive: true });
     const binaryName = path_1.default.basename(solution.source_path, path_1.default.extname(solution.source_path));
     const outputPath = path_1.default.join(workdir, `sol_${solutionId}_${binaryName}`);
-    const result = (0, compiler_1.compileSource)(sourcePath, solution.source_type, outputPath);
+    const result = await (0, compiler_1.compileSource)(sourcePath, solution.source_type, outputPath);
     if (result.success) {
         schema_1.db.prepare('UPDATE solutions SET compiled_binary = ? WHERE id = ?').run(outputPath, solutionId);
         return { success: true, error: '' };
@@ -50,7 +50,7 @@ async function compileAsset(problemId, assetType) {
     const workdir = path_1.default.join(problemDir, 'workdir');
     fs_1.default.mkdirSync(workdir, { recursive: true });
     const outputPath = path_1.default.join(workdir, `${assetType}_${problemId}`);
-    const result = (0, compiler_1.compileSource)(sourcePath, asset.source_type, outputPath);
+    const result = await (0, compiler_1.compileSource)(sourcePath, asset.source_type, outputPath);
     if (result.success) {
         schema_1.db.prepare('UPDATE assets SET compiled_binary = ? WHERE problem_id = ? AND asset_type = ?')
             .run(outputPath, problemId, assetType);
@@ -85,7 +85,7 @@ async function generateTestInput(problemId, testsetId, testIdx) {
             if (!fs_1.default.existsSync(workBinary)) {
                 const srcPath = path_1.default.join(problemDir, e.source_path);
                 if (fs_1.default.existsSync(srcPath)) {
-                    const cr = (0, compiler_1.compileSource)(srcPath, e.source_type, workBinary);
+                    const cr = await (0, compiler_1.compileSource)(srcPath, e.source_type, workBinary);
                     if (cr.success)
                         genBinary = workBinary;
                 }
@@ -100,7 +100,7 @@ async function generateTestInput(problemId, testsetId, testIdx) {
         return { success: false, inputPath: '', error: `Generator '${genName}' not found or failed to compile` };
     }
     const inputPath = path_1.default.join(workdir, `test_${testIdx}.in`);
-    const result = (0, compiler_1.runBinary)(genBinary, {
+    const result = await (0, compiler_1.runBinary)(genBinary, {
         timeLimitMs: 30000,
         args: genArgs,
         cwd: path_1.default.join(problemDir, 'files'),
@@ -126,7 +126,7 @@ async function generateTestAnswer(problemId, inputPath, timeLimitMs, memoryLimit
     const answerPath = outputPath ?? (inputPath + '.out');
     const problemDir = (0, schema_1.getProblemDir)(problemId);
     fs_1.default.mkdirSync(path_1.default.dirname(answerPath), { recursive: true });
-    const result = (0, compiler_1.runBinary)(binary, {
+    const result = await (0, compiler_1.runBinary)(binary, {
         timeLimitMs: timeLimitMs * 3, // generous for answer generation
         stdinFile: inputPath,
         stdoutFile: answerPath,
@@ -208,7 +208,7 @@ async function runInvocation(problemId, invocationId, solutionIds, testsetName) 
                 }
                 const outputFile = path_1.default.join(problemDir, 'workdir', `inv_${invocationId}_sol_${solId}_test_${t.idx}.out`);
                 fs_1.default.mkdirSync(path_1.default.dirname(outputFile), { recursive: true });
-                const runResult = (0, compiler_1.runBinary)(binary, {
+                const runResult = await (0, compiler_1.runBinary)(binary, {
                     timeLimitMs,
                     stdinFile: inputFile,
                     stdoutFile: outputFile,
@@ -224,7 +224,7 @@ async function runInvocation(problemId, invocationId, solutionIds, testsetName) 
                             fs_1.default.copyFileSync(genAns.answerPath, answerFile);
                     }
                     if (fs_1.default.existsSync(answerFile)) {
-                        const checkerResult = (0, compiler_1.runChecker)(checkerBinary, inputFile, outputFile, answerFile, problemDir);
+                        const checkerResult = await (0, compiler_1.runChecker)(checkerBinary, inputFile, outputFile, answerFile, problemDir);
                         verdict = checkerResult.verdict;
                         checkerComment = checkerResult.comment;
                     }

@@ -95,6 +95,9 @@ function spawnAsync(
     proc.on('error', (err) => finish(null, null, err));
     proc.on('close', (code, signal) => finish(code, signal as NodeJS.Signals | null));
 
+    // Suppress EPIPE — the process may exit before reading all stdin
+    proc.stdin?.on('error', () => { /* ignore */ });
+
     if (opts.input !== undefined) {
       proc.stdin?.end(opts.input);
     } else {

@@ -19,6 +19,8 @@ const FRONTEND_DIST = process.env.FRONTEND_DIST || path_1.default.join(__dirname
 async function main() {
     // Initialize DB
     (0, schema_1.initSchema)();
+    // Clean up any invocations that were left in RUNNING state by a previous crash
+    schema_1.db.prepare("UPDATE invocations SET state = 'FAILED' WHERE state = 'RUNNING'").run();
     const app = (0, fastify_1.default)({
         logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
         bodyLimit: 50 * 1024 * 1024, // 50MB
