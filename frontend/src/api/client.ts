@@ -1,4 +1,4 @@
-const BASE = '/api';
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') + '/api';
 
 type Params = Record<string, string | number | boolean | undefined>;
 
