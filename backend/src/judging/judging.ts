@@ -41,7 +41,7 @@ export async function compileSolution(problemId: number, solutionId: number): Pr
   const binaryName = path.basename(solution.source_path, path.extname(solution.source_path));
   const outputPath = path.join(workdir, `sol_${solutionId}_${binaryName}`);
 
-  const result = compileSource(sourcePath, solution.source_type, outputPath);
+  const result = await compileSource(sourcePath, solution.source_type, outputPath);
   if (result.success) {
     db.prepare('UPDATE solutions SET compiled_binary = ? WHERE id = ?').run(outputPath, solutionId);
     return { success: true, error: '' };
@@ -69,7 +69,7 @@ export async function compileAsset(problemId: number, assetType: string): Promis
   fs.mkdirSync(workdir, { recursive: true });
   const outputPath = path.join(workdir, `${assetType}_${problemId}`);
 
-  const result = compileSource(sourcePath, asset.source_type, outputPath);
+  const result = await compileSource(sourcePath, asset.source_type, outputPath);
   if (result.success) {
     db.prepare('UPDATE assets SET compiled_binary = ? WHERE problem_id = ? AND asset_type = ?')
       .run(outputPath, problemId, assetType);
@@ -119,7 +119,7 @@ export async function generateTestInput(
       if (!fs.existsSync(workBinary)) {
         const srcPath = path.join(problemDir, e.source_path);
         if (fs.existsSync(srcPath)) {
-          const cr = compileSource(srcPath, e.source_type, workBinary);
+          const cr = await compileSource(srcPath, e.source_type, workBinary);
           if (cr.success) genBinary = workBinary;
         }
       } else {
@@ -134,7 +134,7 @@ export async function generateTestInput(
   }
 
   const inputPath = path.join(workdir, `test_${testIdx}.in`);
-  const result = runBinary(genBinary, {
+  const result = await runBinary(genBinary, {
     timeLimitMs: 30000,
     args: genArgs,
     cwd: path.join(problemDir, 'files'),
@@ -173,7 +173,7 @@ export async function generateTestAnswer(
   const problemDir = getProblemDir(problemId);
   fs.mkdirSync(path.dirname(answerPath), { recursive: true });
 
-  const result = runBinary(binary, {
+  const result = await runBinary(binary, {
     timeLimitMs: timeLimitMs * 3, // generous for answer generation
     stdinFile: inputPath,
     stdoutFile: answerPath,
@@ -278,7 +278,7 @@ export async function runInvocation(
         const outputFile = path.join(problemDir, 'workdir', `inv_${invocationId}_sol_${solId}_test_${t.idx}.out`);
         fs.mkdirSync(path.dirname(outputFile), { recursive: true });
 
-        const runResult = runBinary(binary, {
+        const runResult = await runBinary(binary, {
           timeLimitMs,
           stdinFile: inputFile,
           stdoutFile: outputFile,
@@ -296,7 +296,7 @@ export async function runInvocation(
           }
 
           if (fs.existsSync(answerFile)) {
-            const checkerResult = runChecker(checkerBinary, inputFile, outputFile, answerFile, problemDir);
+            const checkerResult = await runChecker(checkerBinary, inputFile, outputFile, answerFile, problemDir);
             verdict = checkerResult.verdict;
             checkerComment = checkerResult.comment;
           } else {

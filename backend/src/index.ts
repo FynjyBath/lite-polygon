@@ -5,7 +5,7 @@ import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import fs from 'fs';
-import { initSchema } from './db/schema';
+import { initSchema, db } from './db/schema';
 import { authRoutes } from './routes/auth';
 import { problemRoutes } from './routes/problems';
 
@@ -16,6 +16,8 @@ const FRONTEND_DIST = process.env.FRONTEND_DIST || path.join(__dirname, '..', '.
 async function main() {
   // Initialize DB
   initSchema();
+  // Clean up any invocations that were left in RUNNING state by a previous crash
+  db.prepare("UPDATE invocations SET state = 'FAILED' WHERE state = 'RUNNING'").run();
 
   const app = Fastify({
     logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
