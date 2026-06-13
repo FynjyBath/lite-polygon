@@ -49,6 +49,17 @@ export default function TestsTab({ problemId, info }: Props) {
     }
   }
 
+  async function handleGenerateAnswers() {
+    setMsg(''); setError('');
+    try {
+      const res = await problems.generateAnswers(problemId);
+      setMsg(`Generated ${res.generated} answer(s)${res.errors.length ? '; errors: ' + res.errors.join(', ') : ''}`);
+      reload();
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    }
+  }
+
   async function handleViewInput(idx: number) {
     try {
       const url = problems.testInput(problemId, idx);
@@ -64,7 +75,10 @@ export default function TestsTab({ problemId, info }: Props) {
     <div>
       <div className="flex-between" style={{ marginBottom: 8 }}>
         <h2>Tests</h2>
-        <span style={{ color: '#666', fontSize: 12 }}>{tests.length} test(s)</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: '#666', fontSize: 12 }}>{tests.length} test(s)</span>
+          <button className="btn btn-sm" onClick={handleGenerateAnswers}>Generate Answers</button>
+        </div>
       </div>
 
       {msg && <div className="alert alert-success">{msg}</div>}

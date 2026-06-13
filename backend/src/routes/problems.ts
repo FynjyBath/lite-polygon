@@ -20,7 +20,7 @@ import {
 import { getProblemDir, db } from '../db/schema';
 import { importPackage } from '../services/import';
 import { buildPackage } from '../packages/builder';
-import { compileAsset, compileSolution, runInvocation } from '../judging/judging';
+import { compileAsset, compileSolution, runInvocation, generateTestAnswer } from '../judging/judging';
 import { generateProblemXml } from '../polygon-xml/generator';
 import { buildPackage as _buildPackage } from '../packages/builder';
 
@@ -507,6 +507,36 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(content);
   });
 
+  // problem.generateAnswers — compile main solution, run on every test, write .a files
+  app.post('/api/problem.generateAnswers', async (req, reply) => {
+    const user = await auth(req, reply);
+    if (!user) return;
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const tsName = body.testset ?? 'tests';
+    const testset = getTestset(id, tsName);
+    if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
+    const problemDir = getProblemDir(id);
+    const tests = listTests(testset.id);
+    let generated = 0;
+    const errors: string[] = [];
+    for (const t of tests) {
+      const num = String(t.idx).padStart(2, '0');
+      const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', num));
+      const answerPath = path.join(problemDir, testset.answer_path_pattern.replace('%02d', num));
+      if (!fs.existsSync(inputPath)) { errors.push(`Test ${t.idx}: input missing`); continue; }
+      const r = await generateTestAnswer(id, inputPath, testset.time_limit ?? 1000, testset.memory_limit ?? 268435456, answerPath);
+      if (r.success) {
+        generated++;
+      } else {
+        errors.push(`Test ${t.idx}: ${r.error}`);
+      }
+    }
+    return ok({ generated, errors });
+  });
+
   // problem.setTestGroup
   app.post('/api/problem.setTestGroup', async (req, reply) => {
     const user = await auth(req, reply);
@@ -963,21 +993,26 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
   // Upload package
   app.post('/api/problem.importPackage', async (req, reply) => {
     const user = await auth(req, reply);
+    if (!user) return;
+
     const data = await req.file();
     if (!data) return reply.code(400).send({ status: 'FAILED', comment: 'No file uploaded' });
 
     const tmpPath = `/tmp/upload_${Date.now()}_${Math.random().toString(36).slice(2)}.zip`;
-    await new Promise<void>((resolve, reject) => {
-      const stream = fs.createWriteStream(tmpPath);
-      data.file.pipe(stream);
-      stream.on('finish', resolve);
-      stream.on('error', reject);
-    });
-
     try {
+      await new Promise<void>((resolve, reject) => {
+        const stream = fs.createWriteStream(tmpPath);
+        data.file.pipe(stream);
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+      });
+
       const overwrite = (req.query as Record<string, string>).overwrite === 'true';
       const result = await importPackage(tmpPath, user.id, overwrite);
       return ok(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ status: 'FAILED', comment: msg });
     } finally {
       if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
     }

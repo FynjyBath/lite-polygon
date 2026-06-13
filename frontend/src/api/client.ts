@@ -102,6 +102,8 @@ export const problems = {
     `${BASE}/problem.testInput?problemId=${problemId}&testIndex=${testIndex}${testset ? `&testset=${testset}` : ''}`,
   testAnswer: (problemId: number, testIndex: number, testset?: string): string =>
     `${BASE}/problem.testAnswer?problemId=${problemId}&testIndex=${testIndex}${testset ? `&testset=${testset}` : ''}`,
+  generateAnswers: (problemId: number, testset?: string) =>
+    post<{ generated: number; errors: string[] }>('problem.generateAnswers', { problemId, testset }),
   previewTests: (problemId: number, testset?: string) => get<TestPreview[]>('problem.previewTests', { problemId, testset }),
   viewTestGroup: (problemId: number, testset?: string) => get<TestGroup[]>('problem.viewTestGroup', { problemId, testset }),
   saveTestGroup: (data: Record<string, unknown>) => post<null>('problem.saveTestGroup', data),

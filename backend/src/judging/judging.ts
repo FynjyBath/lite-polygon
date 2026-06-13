@@ -152,7 +152,8 @@ export async function generateTestAnswer(
   problemId: number,
   inputPath: string,
   timeLimitMs: number,
-  memoryLimitBytes: number
+  memoryLimitBytes: number,
+  outputPath?: string
 ): Promise<{ success: boolean; answerPath: string; error: string }> {
   const mainSolution = db.prepare(
     "SELECT * FROM solutions WHERE problem_id = ? AND tag = 'main' LIMIT 1"
@@ -168,8 +169,9 @@ export async function generateTestAnswer(
     binary = updated.compiled_binary;
   }
 
-  const answerPath = inputPath.replace('.in', '.out');
+  const answerPath = outputPath ?? (inputPath + '.out');
   const problemDir = getProblemDir(problemId);
+  fs.mkdirSync(path.dirname(answerPath), { recursive: true });
 
   const result = runBinary(binary, {
     timeLimitMs: timeLimitMs * 3, // generous for answer generation

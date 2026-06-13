@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useParams, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { problems, ProblemInfo } from '../api/client';
 
 // Tab pages
@@ -8,6 +8,7 @@ import StatementTab from './Problem/StatementTab';
 import FilesTab from './Problem/FilesTab';
 import CheckerTab from './Problem/CheckerTab';
 import ValidatorTab from './Problem/ValidatorTab';
+import InteractorTab from './Problem/InteractorTab';
 import TestsTab from './Problem/TestsTab';
 import GroupsTab from './Problem/GroupsTab';
 import SolutionsTab from './Problem/SolutionsTab';
@@ -18,7 +19,7 @@ import TagsTab from './Problem/TagsTab';
 import ReviewTab from './Problem/ReviewTab';
 
 const TABS = [
-  { key: '', label: 'General Info', path: '' },
+  { key: 'general', label: 'General Info', path: 'general' },
   { key: 'statement', label: 'Statement', path: 'statement' },
   { key: 'files', label: 'Files', path: 'files' },
   { key: 'checker', label: 'Checker', path: 'checker' },
@@ -115,12 +116,13 @@ export default function ProblemPage() {
         </div>
 
         <Routes>
-          <Route index element={<GeneralInfo problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+          <Route index element={<Navigate to={`/problem/${problemId}/general`} replace />} />
+          <Route path="general" element={<GeneralInfo problemId={problemId} info={info} onUpdate={reloadInfo} />} />
           <Route path="statement" element={<StatementTab problemId={problemId} />} />
           <Route path="files" element={<FilesTab problemId={problemId} />} />
           <Route path="checker" element={<CheckerTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
           <Route path="validator" element={<ValidatorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="interactor" element={<div>Interactor — same as checker/validator. Not yet interactive-specific UI.</div>} />
+          <Route path="interactor" element={<InteractorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
           <Route path="tests" element={<TestsTab problemId={problemId} info={info} />} />
           <Route path="groups" element={<GroupsTab problemId={problemId} info={info} />} />
           <Route path="solutions" element={<SolutionsTab problemId={problemId} />} />

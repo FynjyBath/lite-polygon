@@ -10,7 +10,7 @@ const TAGS = ['main', 'accepted', 'wrong-answer', 'time-limit-exceeded', 'time-l
 export default function SolutionsTab({ problemId }: Props) {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [content, setContent] = useState('');
-  const [newSol, setNewSol] = useState({ sourcePath: '', sourceType: 'cpp.gcc14-64-msys2-g++23', tag: 'accepted' });
+  const [newSol, setNewSol] = useState({ sourcePath: '', sourceType: 'cpp.g++17', tag: 'accepted' });
   const [viewSrc, setViewSrc] = useState<{ path: string; content: string } | null>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -27,7 +27,7 @@ export default function SolutionsTab({ problemId }: Props) {
     try {
       await problems.saveSolution({ problemId, ...newSol, content: content || undefined });
       setMsg('Solution saved');
-      setNewSol({ sourcePath: '', sourceType: 'cpp.gcc14-64-msys2-g++23', tag: 'accepted' });
+      setNewSol({ sourcePath: '', sourceType: 'cpp.g++17', tag: 'accepted' });
       setContent('');
       reload();
     } catch (err: unknown) {
@@ -37,7 +37,8 @@ export default function SolutionsTab({ problemId }: Props) {
 
   async function handleView(sol: Solution) {
     try {
-      const res = await fetch(`/api/problem.viewSolution?problemId=${problemId}&solutionId=${sol.id}`, { credentials: 'include' });
+      const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+      const res = await fetch(`${base}/api/problem.viewSolution?problemId=${problemId}&solutionId=${sol.id}`, { credentials: 'include' });
       const text = await res.text();
       setViewSrc({ path: sol.source_path, content: text });
     } catch {
