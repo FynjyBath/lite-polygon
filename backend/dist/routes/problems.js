@@ -67,6 +67,21 @@ async function problemRoutes(app) {
         const problem = (0, problems_1.createProblem)(user.id, name);
         return ok({ id: problem.id, name: problem.short_name });
     });
+    // problem.delete
+    app.post('/api/problem.delete', async (req, reply) => {
+        const user = await auth(req, reply);
+        const { problemId } = req.body;
+        const id = parseInt(problemId ?? '');
+        if (!id)
+            return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+        if (!getProblemForUser(id, user.id, reply))
+            return;
+        const problemDir = (0, schema_1.getProblemDir)(id);
+        (0, problems_1.deleteProblem)(id);
+        if (fs_1.default.existsSync(problemDir))
+            fs_1.default.rmSync(problemDir, { recursive: true, force: true });
+        return ok(null);
+    });
     // problem.info
     app.get('/api/problem.info', async (req, reply) => {
         const user = await auth(req, reply);

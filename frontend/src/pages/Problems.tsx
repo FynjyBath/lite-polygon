@@ -35,6 +35,16 @@ export default function ProblemsPage() {
     }
   }
 
+  async function handleDelete(p: ProblemSummary) {
+    if (!window.confirm(`Delete problem "${p.shortName}"? This cannot be undone.`)) return;
+    try {
+      await problems.delete(p.id);
+      reload();
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    }
+  }
+
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -130,8 +140,9 @@ export default function ProblemsPage() {
                   {p.modified ? 'Modified' : 'Clean'}
                 </td>
                 <td style={{ color: '#888', fontSize: 11 }}>{p.updatedAt.slice(0, 16)}</td>
-                <td>
+                <td style={{ display: 'flex', gap: 4 }}>
                   <Link to={`/problem/${p.id}`} className="btn btn-sm">Open</Link>
+                  <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p)}>Delete</button>
                 </td>
               </tr>
             ))}

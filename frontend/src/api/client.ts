@@ -75,6 +75,7 @@ export const auth = {
 export const problems = {
   list: () => get<ProblemSummary[]>('problems.list'),
   create: (name: string) => post<{ id: number; name: string }>('problem.create', { name }),
+  delete: (problemId: number) => post<null>('problem.delete', { problemId }),
   info: (problemId: number) => get<ProblemInfo>('problem.info', { problemId }),
   updateInfo: (data: Record<string, unknown>) => post<null>('problem.updateInfo', data),
   statements: (problemId: number) => get<Statement[]>('problem.statements', { problemId }),

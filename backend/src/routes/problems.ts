@@ -86,6 +86,19 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return ok({ id: problem.id, name: problem.short_name });
   });
 
+  // problem.delete
+  app.post('/api/problem.delete', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId } = req.body as { problemId?: string };
+    const id = parseInt(problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const problemDir = getProblemDir(id);
+    deleteProblem(id);
+    if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
+    return ok(null);
+  });
+
   // problem.info
   app.get('/api/problem.info', async (req, reply) => {
     const user = await auth(req, reply);
