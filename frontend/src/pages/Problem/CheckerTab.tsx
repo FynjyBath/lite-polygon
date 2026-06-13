@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { problems, Asset, ProblemInfo, CheckerTest } from '../../api/client';
 
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
@@ -9,10 +9,12 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
   const [sourceType, setSourceType] = useState('cpp.g++17');
   const [name, setName] = useState('');
   const [checkerType, setCheckerType] = useState('testlib');
+  const [content, setContent] = useState('');
   const [tests, setTests] = useState<CheckerTest[]>([]);
   const [newTest, setNewTest] = useState({ input: '', output: '', answer: '', verdict: 'OK' });
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { reload(); }, [problemId]);
 
@@ -21,12 +23,28 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
     problems.checkerTests(problemId).then(setTests);
   }
 
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setContent(reader.result as string);
+      if (!sourcePath) setSourcePath('files/' + file.name);
+    };
+    reader.readAsText(file);
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setMsg(''); setError('');
     try {
+      if (sourcePath && content) {
+        await problems.saveFile({ problemId, path: sourcePath, sourceType, content });
+      }
       await problems.setChecker({ problemId, sourcePath, sourceType, name, type: checkerType });
       setMsg('Checker saved');
+      setContent('');
+      if (fileRef.current) fileRef.current.value = '';
       reload(); onUpdate();
     } catch (err: unknown) {
       setError((err as Error).message);
@@ -61,6 +79,11 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
       <form onSubmit={handleSave} style={{ marginBottom: 16 }}>
         <div className="section-header">Set Checker</div>
         <div className="form-row">
+          <label>Upload file:</label>
+          <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
+            style={{ fontSize: 12 }} />
+        </div>
+        <div className="form-row">
           <label>Source path:</label>
           <input type="text" value={sourcePath} onChange={e => setSourcePath(e.target.value)}
             placeholder="files/check.cpp" style={{ width: 260 }} />
@@ -84,6 +107,12 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
             <option value="custom">custom</option>
           </select>
         </div>
+        {content && (
+          <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+            <label style={{ marginBottom: 4 }}>Content preview (will be saved to {sourcePath}):</label>
+            <div className="code-view" style={{ maxHeight: 120 }}>{content.slice(0, 500)}{content.length > 500 ? '…' : ''}</div>
+          </div>
+        )}
         <div className="form-actions">
           <button type="submit" className="btn btn-primary">Set Checker</button>
         </div>

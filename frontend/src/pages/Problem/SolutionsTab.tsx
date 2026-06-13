@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { problems, Solution } from '../../api/client';
 
 interface Props { problemId: number; }
@@ -14,11 +14,23 @@ export default function SolutionsTab({ problemId }: Props) {
   const [viewSrc, setViewSrc] = useState<{ path: string; content: string } | null>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { reload(); }, [problemId]);
 
   function reload() {
     problems.solutions(problemId).then(setSolutions).catch(e => setError(e.message));
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setContent(reader.result as string);
+      if (!newSol.sourcePath) setNewSol(s => ({ ...s, sourcePath: 'solutions/' + file.name }));
+    };
+    reader.readAsText(file);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -29,6 +41,7 @@ export default function SolutionsTab({ problemId }: Props) {
       setMsg('Solution saved');
       setNewSol({ sourcePath: '', sourceType: 'cpp.g++17', tag: 'accepted' });
       setContent('');
+      if (fileRef.current) fileRef.current.value = '';
       reload();
     } catch (err: unknown) {
       setError((err as Error).message);
@@ -102,6 +115,11 @@ export default function SolutionsTab({ problemId }: Props) {
       <div className="section-header">Add Solution</div>
       <form onSubmit={handleSave}>
         <div className="form-row">
+          <label>Upload file:</label>
+          <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
+            style={{ fontSize: 12 }} />
+        </div>
+        <div className="form-row">
           <label>Source path:</label>
           <input type="text" value={newSol.sourcePath} onChange={e => setNewSol({ ...newSol, sourcePath: e.target.value })}
             placeholder="solutions/main.cpp" style={{ width: 260 }} required />
@@ -121,11 +139,12 @@ export default function SolutionsTab({ problemId }: Props) {
           </select>
         </div>
         <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-          <label style={{ marginBottom: 4 }}>Content (paste source code):</label>
+          <label style={{ marginBottom: 4 }}>Content (paste or upload above):</label>
           <textarea
             value={content}
             onChange={e => setContent(e.target.value)}
             style={{ width: '100%', minHeight: 120, fontFamily: 'monospace', fontSize: 11 }}
+            placeholder="Paste source code here, or upload a file above"
           />
         </div>
         <div className="form-actions">

@@ -466,7 +466,86 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!getProblemForUser(id, user.id, reply)) return;
     const testset = getTestset(id, body.testset ?? 'tests');
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
+
+    // Delete files and rename subsequent ones to close the gap
+    const problemDir = getProblemDir(id);
+    const tests = listTests(testset.id);
+    const maxIdx = tests.length > 0 ? tests[tests.length - 1].idx : 0;
+    const delNum = String(idx).padStart(2, '0');
+    const delIn = path.join(problemDir, testset.input_path_pattern.replace('%02d', delNum));
+    const delAns = path.join(problemDir, testset.answer_path_pattern.replace('%02d', delNum));
+    if (fs.existsSync(delIn)) fs.unlinkSync(delIn);
+    if (fs.existsSync(delAns)) fs.unlinkSync(delAns);
+    for (let i = idx + 1; i <= maxIdx; i++) {
+      const oldN = String(i).padStart(2, '0');
+      const newN = String(i - 1).padStart(2, '0');
+      const oIn = path.join(problemDir, testset.input_path_pattern.replace('%02d', oldN));
+      const nIn = path.join(problemDir, testset.input_path_pattern.replace('%02d', newN));
+      const oAns = path.join(problemDir, testset.answer_path_pattern.replace('%02d', oldN));
+      const nAns = path.join(problemDir, testset.answer_path_pattern.replace('%02d', newN));
+      if (fs.existsSync(oIn)) fs.renameSync(oIn, nIn);
+      if (fs.existsSync(oAns)) fs.renameSync(oAns, nAns);
+    }
+
     deleteTestDb(testset.id, idx);
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.updateTest — update metadata (sample/group/points/description) without touching input file
+  app.post('/api/problem.updateTest', async (req, reply) => {
+    const user = await auth(req, reply);
+    if (!user) return;
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const testIndex = parseInt(body.testIndex ?? '');
+    if (!id || !testIndex) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and testIndex required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const testset = getOrCreateTestset(id, body.testset ?? 'tests');
+    const updates: Record<string, unknown> = {};
+    if (body.sample !== undefined) updates.sample = body.sample === 'true' ? 1 : 0;
+    if (body.group !== undefined) updates.group_name = body.group;
+    if (body.points !== undefined) updates.points = parseFloat(body.points) || 0;
+    if (body.description !== undefined) updates.description = body.description;
+    upsertTest(testset.id, testIndex, updates);
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.moveTest — swap a test with its neighbour (direction: up|down)
+  app.post('/api/problem.moveTest', async (req, reply) => {
+    const user = await auth(req, reply);
+    if (!user) return;
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const testIndex = parseInt(body.testIndex ?? '');
+    const direction = body.direction ?? 'up';
+    if (!id || !testIndex) return reply.code(400).send({ status: 'FAILED', comment: 'required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const testset = getOrCreateTestset(id, body.testset ?? 'tests');
+    const otherIndex = direction === 'up' ? testIndex - 1 : testIndex + 1;
+    const tests = listTests(testset.id);
+    const maxIdx = tests.length > 0 ? tests[tests.length - 1].idx : 0;
+    if (otherIndex < 1 || otherIndex > maxIdx) return reply.code(400).send({ status: 'FAILED', comment: 'Cannot move' });
+
+    // Swap DB indices via temp (-1)
+    db.prepare('UPDATE tests SET idx = -1 WHERE testset_id = ? AND idx = ?').run(testset.id, testIndex);
+    db.prepare('UPDATE tests SET idx = ? WHERE testset_id = ? AND idx = ?').run(testIndex, testset.id, otherIndex);
+    db.prepare('UPDATE tests SET idx = ? WHERE testset_id = ? AND idx = -1').run(otherIndex, testset.id);
+
+    // Swap files on disk
+    const problemDir = getProblemDir(id);
+    const n1 = String(testIndex).padStart(2, '0');
+    const n2 = String(otherIndex).padStart(2, '0');
+    for (const pat of [testset.input_path_pattern, testset.answer_path_pattern]) {
+      const f1 = path.join(problemDir, pat.replace('%02d', n1));
+      const f2 = path.join(problemDir, pat.replace('%02d', n2));
+      const tmp = f1 + '._swap';
+      if (fs.existsSync(f1)) fs.renameSync(f1, tmp);
+      if (fs.existsSync(f2)) fs.renameSync(f2, f1);
+      if (fs.existsSync(tmp)) fs.renameSync(tmp, f2);
+    }
+
     updateProblem(id, { modified: 1 });
     return ok(null);
   });
@@ -892,14 +971,25 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', testNum));
       const answerPath = path.join(problemDir, testset.answer_path_pattern.replace('%02d', testNum));
       let inputPreview = '';
+      let inputSize = 0;
+      let answerSize = 0;
       if (fs.existsSync(inputPath)) {
-        try { inputPreview = fs.readFileSync(inputPath, 'utf-8').slice(0, 200); } catch { /**/ }
+        try {
+          const data = fs.readFileSync(inputPath);
+          inputSize = data.length;
+          inputPreview = data.toString('utf-8').slice(0, 200);
+        } catch { /**/ }
+      }
+      if (fs.existsSync(answerPath)) {
+        try { answerSize = fs.statSync(answerPath).size; } catch { /**/ }
       }
       return {
         ...t,
         inputAvailable: fs.existsSync(inputPath),
         answerAvailable: fs.existsSync(answerPath),
         inputPreview,
+        inputSize,
+        answerSize,
       };
     }));
   });

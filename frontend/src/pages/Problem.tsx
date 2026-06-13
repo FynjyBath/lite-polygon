@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link, useParams, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useParams, useLocation } from 'react-router-dom';
 import { problems, ProblemInfo } from '../api/client';
 
 // Tab pages
@@ -10,7 +10,6 @@ import CheckerTab from './Problem/CheckerTab';
 import ValidatorTab from './Problem/ValidatorTab';
 import InteractorTab from './Problem/InteractorTab';
 import TestsTab from './Problem/TestsTab';
-import GroupsTab from './Problem/GroupsTab';
 import SolutionsTab from './Problem/SolutionsTab';
 import InvocationsTab from './Problem/InvocationsTab';
 import StressesTab from './Problem/StressesTab';
@@ -26,7 +25,6 @@ const TABS = [
   { key: 'validator', label: 'Validator', path: 'validator' },
   { key: 'interactor', label: 'Interactor', path: 'interactor' },
   { key: 'tests', label: 'Tests', path: 'tests' },
-  { key: 'groups', label: 'Groups', path: 'groups' },
   { key: 'solutions', label: 'Solutions', path: 'solutions' },
   { key: 'invocations', label: 'Invocations', path: 'invocations' },
   { key: 'stresses', label: 'Stresses', path: 'stresses' },
@@ -41,7 +39,6 @@ export default function ProblemPage() {
   const [info, setInfo] = useState<ProblemInfo | null>(null);
   const [error, setError] = useState('');
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!problemId) return;
@@ -71,17 +68,17 @@ export default function ProblemPage() {
         <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
           Rev {info.revision} &bull; TL: {info.timeLimit}ms &bull; ML: {Math.round(info.memoryLimit / 1024 / 1024)}MB
           &bull; {info.inputFile || 'stdin'}/{info.outputFile || 'stdout'}
-          {info.interactive ? ' &bull; Interactive' : ''}
+          {info.interactive ? ' • Interactive' : ''}
         </div>
       </div>
 
       <div className="problem-nav">
         {TABS.map(t => {
-          const isActive = t.path === '' ? subPath === '' : subPath === t.path || subPath.startsWith(t.path + '/');
+          const isActive = subPath === t.path || subPath.startsWith(t.path + '/');
           return (
             <Link
               key={t.key}
-              to={`${basePath}${t.path ? '/' + t.path : ''}`}
+              to={`${basePath}/${t.path}`}
               className={isActive ? 'active' : ''}
             >
               {t.label}
@@ -90,9 +87,30 @@ export default function ProblemPage() {
         })}
       </div>
 
-      <div className="content clearfix">
-        {/* Sidebar summary */}
-        <div className="problem-summary">
+      {/* Two-column layout: main content | sidebar */}
+      <div className="content" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        {/* Main area */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Routes>
+            <Route index element={<Navigate to={`/problem/${problemId}/general`} replace />} />
+            <Route path="general" element={<GeneralInfo problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+            <Route path="statement" element={<StatementTab problemId={problemId} />} />
+            <Route path="files" element={<FilesTab problemId={problemId} />} />
+            <Route path="checker" element={<CheckerTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+            <Route path="validator" element={<ValidatorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+            <Route path="interactor" element={<InteractorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+            <Route path="tests" element={<TestsTab problemId={problemId} info={info} />} />
+            <Route path="solutions" element={<SolutionsTab problemId={problemId} />} />
+            <Route path="invocations" element={<InvocationsTab problemId={problemId} />} />
+            <Route path="stresses" element={<StressesTab problemId={problemId} />} />
+            <Route path="packages" element={<PackagesTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+            <Route path="tags" element={<TagsTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
+            <Route path="review" element={<ReviewTab problemId={problemId} />} />
+          </Routes>
+        </div>
+
+        {/* Sidebar */}
+        <div className="problem-summary" style={{ flexShrink: 0, width: 200 }}>
           <table>
             <tbody>
               <tr><td>Statements:</td><td>{info.statementsCount}</td></tr>
@@ -104,34 +122,16 @@ export default function ProblemPage() {
               <tr><td>Tags:</td><td>{info.tags.join(', ') || '—'}</td></tr>
             </tbody>
           </table>
-          <div style={{ marginTop: 8, borderTop: '1px solid #ddd', paddingTop: 6 }}>
+          <div style={{ marginTop: 8, borderTop: '1px solid #ddd', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <button
               className="btn btn-sm"
-              style={{ width: '100%', marginBottom: 4 }}
+              style={{ width: '100%' }}
               onClick={() => { problems.commitChanges(problemId).then(reloadInfo); }}
             >
               Commit Changes
             </button>
           </div>
         </div>
-
-        <Routes>
-          <Route index element={<Navigate to={`/problem/${problemId}/general`} replace />} />
-          <Route path="general" element={<GeneralInfo problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="statement" element={<StatementTab problemId={problemId} />} />
-          <Route path="files" element={<FilesTab problemId={problemId} />} />
-          <Route path="checker" element={<CheckerTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="validator" element={<ValidatorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="interactor" element={<InteractorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="tests" element={<TestsTab problemId={problemId} info={info} />} />
-          <Route path="groups" element={<GroupsTab problemId={problemId} info={info} />} />
-          <Route path="solutions" element={<SolutionsTab problemId={problemId} />} />
-          <Route path="invocations" element={<InvocationsTab problemId={problemId} />} />
-          <Route path="stresses" element={<StressesTab problemId={problemId} />} />
-          <Route path="packages" element={<PackagesTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="tags" element={<TagsTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
-          <Route path="review" element={<ReviewTab problemId={problemId} />} />
-        </Routes>
       </div>
     </div>
   );

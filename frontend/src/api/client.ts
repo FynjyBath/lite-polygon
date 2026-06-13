@@ -104,6 +104,10 @@ export const problems = {
     `${BASE}/problem.testAnswer?problemId=${problemId}&testIndex=${testIndex}${testset ? `&testset=${testset}` : ''}`,
   generateAnswers: (problemId: number, testset?: string) =>
     post<{ generated: number; errors: string[] }>('problem.generateAnswers', { problemId, testset }),
+  updateTest: (problemId: number, testIndex: number, data: { sample?: boolean; group?: string; points?: number; description?: string }, testset?: string) =>
+    post<null>('problem.updateTest', { problemId, testIndex, testset, ...Object.fromEntries(Object.entries({ sample: data.sample?.toString(), group: data.group, points: data.points?.toString(), description: data.description }).filter(([,v]) => v !== undefined)) }),
+  moveTest: (problemId: number, testIndex: number, direction: 'up' | 'down', testset?: string) =>
+    post<null>('problem.moveTest', { problemId, testIndex, direction, testset }),
   previewTests: (problemId: number, testset?: string) => get<TestPreview[]>('problem.previewTests', { problemId, testset }),
   viewTestGroup: (problemId: number, testset?: string) => get<TestGroup[]>('problem.viewTestGroup', { problemId, testset }),
   saveTestGroup: (data: Record<string, unknown>) => post<null>('problem.saveTestGroup', data),
@@ -247,6 +251,8 @@ export interface TestEntry {
 export interface TestPreview extends TestEntry {
   answerAvailable: boolean;
   inputPreview: string;
+  inputSize: number;
+  answerSize: number;
 }
 
 export interface TestGroup {

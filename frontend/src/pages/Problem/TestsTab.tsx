@@ -1,183 +1,545 @@
-import React, { useState, useEffect } from 'react';
-import { problems, TestPreview, ProblemInfo } from '../../api/client';
+import React, { useState, useEffect, useRef } from 'react';
+import { problems, TestPreview, TestGroup, ProblemInfo } from '../../api/client';
 
 interface Props { problemId: number; info: ProblemInfo; }
 
-export default function TestsTab({ problemId, info }: Props) {
+type RowEdit = { desc: string; group: string; points: string };
+
+function fmtSize(bytes: number): string {
+  if (!bytes) return '—';
+  if (bytes < 1024) return bytes + ' B';
+  return (bytes / 1024).toFixed(1) + ' KB';
+}
+
+export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const [tests, setTests] = useState<TestPreview[]>([]);
+  const [groups, setGroups] = useState<TestGroup[]>([]);
+  const [editRows, setEditRows] = useState<Record<number, RowEdit>>({});
+  const [viewInput, setViewInput] = useState<{ idx: number; content: string } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [newTest, setNewTest] = useState({ method: 'manual', input: '', cmd: '', description: '', sample: false, group: '', points: '0' });
+  const [newGroup, setNewGroup] = useState({ name: '', points: '0', pointsPolicy: 'complete-group', feedbackPolicy: 'icpc', dependencies: '' });
+  const [editingGroup, setEditingGroup] = useState<{ id: number; field: string } | null>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
-  const [viewInput, setViewInput] = useState<{ idx: number; content: string } | null>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { reload(); }, [problemId]);
 
   function reload() {
-    problems.previewTests(problemId).then(setTests).catch(e => setError(e.message));
+    problems.previewTests(problemId).then(ts => {
+      setTests(ts);
+      const rows: Record<number, RowEdit> = {};
+      for (const t of ts) rows[t.idx] = { desc: t.description, group: t.group_name, points: String(t.points || 0) };
+      setEditRows(rows);
+    }).catch(e => setError(e.message));
+    problems.viewTestGroup(problemId).then(setGroups).catch(() => {});
   }
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(''); setError('');
+  // ── Generate Answers ──────────────────────────────────────────────────────
+  async function handleGenerateAnswers() {
+    setMsg(''); setError(''); setGenerating(true);
     try {
-      await problems.saveTest({
-        problemId,
-        method: newTest.method,
-        input: newTest.method === 'manual' ? newTest.input : undefined,
-        cmd: newTest.method === 'generated' ? newTest.cmd : undefined,
-        scriptLine: newTest.method === 'generated' ? newTest.cmd : undefined,
-        description: newTest.description,
-        sample: String(newTest.sample),
-        group: newTest.group,
-        points: newTest.points,
-      });
-      setNewTest({ method: 'manual', input: '', cmd: '', description: '', sample: false, group: '', points: '0' });
-      setMsg('Test added');
+      const r = await problems.generateAnswers(problemId);
+      setMsg(`Generated ${r.generated} answer(s)${r.errors.length ? '; errors: ' + r.errors.join(', ') : ''}`);
       reload();
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    }
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setGenerating(false); }
   }
 
+  // ── Upload test files ─────────────────────────────────────────────────────
+  async function handleUploadTests(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true); setMsg(''); setError('');
+    let added = 0;
+    for (const file of files) {
+      try {
+        const content = await readFile(file);
+        await problems.saveTest({ problemId, method: 'manual', input: content, sample: 'false', description: file.name });
+        added++;
+      } catch (err: unknown) { setError((err as Error).message); break; }
+    }
+    setMsg(`Uploaded ${added} test(s)`);
+    setUploading(false);
+    if (uploadRef.current) uploadRef.current.value = '';
+    reload();
+  }
+
+  function readFile(file: File): Promise<string> {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result as string);
+      r.onerror = () => rej(new Error('Read error'));
+      r.readAsText(file);
+    });
+  }
+
+  // ── Inline row edit ───────────────────────────────────────────────────────
+  function setRow(idx: number, patch: Partial<RowEdit>) {
+    setEditRows(r => ({ ...r, [idx]: { ...r[idx], ...patch } }));
+  }
+
+  async function saveRow(t: TestPreview) {
+    const row = editRows[t.idx];
+    if (!row) return;
+    const changed = row.desc !== t.description || row.group !== t.group_name || row.points !== String(t.points || 0);
+    if (!changed) return;
+    try {
+      await problems.updateTest(problemId, t.idx, { description: row.desc, group: row.group, points: parseFloat(row.points) || 0 });
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  async function toggleSample(t: TestPreview) {
+    try {
+      await problems.updateTest(problemId, t.idx, { sample: !t.sample });
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  // ── Move test ─────────────────────────────────────────────────────────────
+  async function handleMove(idx: number, direction: 'up' | 'down') {
+    try {
+      await problems.moveTest(problemId, idx, direction);
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  // ── Delete test ───────────────────────────────────────────────────────────
   async function handleDelete(idx: number) {
     if (!confirm(`Delete test ${idx}?`)) return;
-    try {
-      await problems.deleteTest(problemId, idx);
-      reload();
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    }
+    try { await problems.deleteTest(problemId, idx); reload(); }
+    catch (err: unknown) { setError((err as Error).message); }
   }
 
-  async function handleGenerateAnswers() {
-    setMsg(''); setError('');
-    try {
-      const res = await problems.generateAnswers(problemId);
-      setMsg(`Generated ${res.generated} answer(s)${res.errors.length ? '; errors: ' + res.errors.join(', ') : ''}`);
-      reload();
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    }
-  }
-
+  // ── View input ────────────────────────────────────────────────────────────
   async function handleViewInput(idx: number) {
     try {
       const url = problems.testInput(problemId, idx);
       const res = await fetch(url, { credentials: 'include' });
       const text = await res.text();
-      setViewInput({ idx, content: text.slice(0, 2000) });
-    } catch {
-      setViewInput({ idx, content: 'Failed to load' });
-    }
+      setViewInput({ idx, content: text.slice(0, 3000) });
+    } catch { setViewInput({ idx, content: 'Failed to load' }); }
+  }
+
+  // ── Add test ──────────────────────────────────────────────────────────────
+  async function handleAddTest(e: React.FormEvent) {
+    e.preventDefault(); setMsg(''); setError('');
+    try {
+      await problems.saveTest({
+        problemId, method: newTest.method,
+        input: newTest.method === 'manual' ? newTest.input : undefined,
+        cmd: newTest.method === 'generated' ? newTest.cmd : undefined,
+        scriptLine: newTest.method === 'generated' ? newTest.cmd : undefined,
+        description: newTest.description,
+        sample: String(newTest.sample),
+        group: newTest.group, points: newTest.points,
+      });
+      setNewTest({ method: 'manual', input: '', cmd: '', description: '', sample: false, group: '', points: '0' });
+      setMsg('Test added'); reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  // ── Groups ────────────────────────────────────────────────────────────────
+  async function handleSaveGroup(e: React.FormEvent) {
+    e.preventDefault(); setMsg(''); setError('');
+    try {
+      await problems.saveTestGroup({
+        problemId, groupName: newGroup.name, points: newGroup.points,
+        pointsPolicy: newGroup.pointsPolicy, feedbackPolicy: newGroup.feedbackPolicy,
+        dependencies: newGroup.dependencies,
+      });
+      setNewGroup({ name: '', points: '0', pointsPolicy: 'complete-group', feedbackPolicy: 'icpc', dependencies: '' });
+      setMsg('Group saved'); reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  async function updateGroupField(g: TestGroup, field: string, value: string) {
+    setEditingGroup(null);
+    try {
+      const patch: Record<string, string | number> = { problemId, groupName: g.name };
+      if (field === 'points') patch.points = value;
+      if (field === 'pointsPolicy') patch.pointsPolicy = value;
+      if (field === 'feedbackPolicy') patch.feedbackPolicy = value;
+      await problems.saveTestGroup(patch as Record<string, unknown>);
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  async function removeGroupDep(g: TestGroup, dep: string) {
+    try {
+      const newDeps = g.dependencies.filter(d => d !== dep);
+      await problems.saveTestGroup({ problemId, groupName: g.name, dependencies: newDeps.join(',') });
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  async function addGroupDep(g: TestGroup, dep: string) {
+    if (!dep.trim()) return;
+    try {
+      const newDeps = [...new Set([...g.dependencies, dep.trim()])];
+      await problems.saveTestGroup({ problemId, groupName: g.name, dependencies: newDeps.join(',') });
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  // Count tests per group
+  const testsPerGroup: Record<string, number> = {};
+  for (const t of tests) {
+    const key = t.group_name || '(none)';
+    testsPerGroup[key] = (testsPerGroup[key] || 0) + 1;
   }
 
   return (
     <div>
+      {/* Header */}
       <div className="flex-between" style={{ marginBottom: 8 }}>
-        <h2>Tests</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: '#666', fontSize: 12 }}>{tests.length} test(s)</span>
-          <button className="btn btn-sm" onClick={handleGenerateAnswers}>Generate Answers</button>
+        <h2>Tests ({tests.length})</h2>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-sm" onClick={handleGenerateAnswers} disabled={generating}>
+            {generating ? 'Generating…' : 'Generate Answers'}
+          </button>
+          <label className="btn btn-sm" style={{ cursor: 'pointer', marginBottom: 0 }}>
+            {uploading ? 'Uploading…' : 'Upload Tests'}
+            <input ref={uploadRef} type="file" multiple style={{ display: 'none' }} onChange={handleUploadTests} />
+          </label>
         </div>
       </div>
 
       {msg && <div className="alert alert-success">{msg}</div>}
       {error && <div className="alert alert-error">{error}</div>}
 
-      <table className="poly-table" style={{ marginBottom: 12 }}>
-        <thead>
-          <tr>
-            <th>#</th><th>Method</th><th>Sample</th><th>Group</th><th>Points</th>
-            <th>Cmd/Description</th><th>Input</th><th>Answer</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tests.map(t => (
-            <tr key={t.idx}>
-              <td>{t.idx}</td>
-              <td>{t.method}</td>
-              <td>{t.sample ? '✓' : ''}</td>
-              <td>{t.group_name}</td>
-              <td>{t.points > 0 ? t.points : ''}</td>
-              <td>
-                {t.method === 'generated'
-                  ? <span className="source-type">{t.cmd}</span>
-                  : t.description || ''}
-              </td>
-              <td>
-                {t.inputAvailable
-                  ? <button className="btn btn-sm" onClick={() => handleViewInput(t.idx)}>View</button>
-                  : <span style={{ color: '#888', fontSize: 11 }}>missing</span>}
-              </td>
-              <td>
-                {t.answerAvailable
-                  ? <a href={problems.testAnswer(problemId, t.idx)} target="_blank" rel="noreferrer" className="btn btn-sm">View</a>
-                  : <span style={{ color: '#888', fontSize: 11 }}>missing</span>}
-              </td>
-              <td>
-                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(t.idx)}>Del</button>
-              </td>
+      {/* Tests table */}
+      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+        <table className="poly-table" style={{ minWidth: 700 }}>
+          <thead>
+            <tr>
+              <th style={{ width: 30 }}>#</th>
+              <th style={{ width: 160 }}>Content</th>
+              <th style={{ width: 60 }}>Size</th>
+              <th style={{ width: 120 }}>Desc</th>
+              <th style={{ width: 36 }} title="Sample/Example">Ex</th>
+              <th style={{ width: 60 }}>Group</th>
+              <th style={{ width: 60 }}>Points</th>
+              <th style={{ width: 44 }}>Input</th>
+              <th style={{ width: 48 }}>Answer</th>
+              <th>Actions</th>
             </tr>
-          ))}
-          {tests.length === 0 && <tr><td colSpan={9} style={{ color: '#888' }}>No tests</td></tr>}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tests.map((t, i) => {
+              const row = editRows[t.idx] ?? { desc: t.description, group: t.group_name, points: String(t.points || 0) };
+              return (
+                <tr key={t.idx}>
+                  <td style={{ textAlign: 'center', color: '#666' }}>{t.idx}</td>
+                  <td>
+                    {t.inputAvailable
+                      ? <div className="input-preview" style={{ maxHeight: 48, fontSize: 10, cursor: 'pointer' }} onClick={() => handleViewInput(t.idx)}>{t.inputPreview}</div>
+                      : <span style={{ color: '#bbb', fontSize: 11 }}>no input</span>}
+                  </td>
+                  <td style={{ color: '#666', fontSize: 11 }}>{t.inputAvailable ? fmtSize(t.inputSize) : '—'}</td>
+                  <td>
+                    <input
+                      value={row.desc}
+                      onChange={ev => setRow(t.idx, { desc: ev.target.value })}
+                      onBlur={() => saveRow(t)}
+                      onKeyDown={e => e.key === 'Enter' && saveRow(t)}
+                      style={{ width: '100%', border: '1px solid #ddd', padding: '1px 4px', fontSize: 11 }}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      className={`btn btn-sm${t.sample ? '' : ''}`}
+                      style={{
+                        padding: '1px 6px', fontSize: 11,
+                        background: t.sample ? '#efe' : '#f4f4f4',
+                        borderColor: t.sample ? '#9c9' : '#ccc',
+                        color: t.sample ? '#060' : '#aaa',
+                        fontWeight: t.sample ? 'bold' : 'normal',
+                      }}
+                      onClick={() => toggleSample(t)}
+                      title="Toggle sample/example"
+                    >
+                      {t.sample ? 'Y' : '—'}
+                    </button>
+                  </td>
+                  <td>
+                    <input
+                      value={row.group}
+                      onChange={ev => setRow(t.idx, { group: ev.target.value })}
+                      onBlur={() => saveRow(t)}
+                      onKeyDown={e => e.key === 'Enter' && saveRow(t)}
+                      style={{ width: 52, border: '1px solid #ddd', padding: '1px 4px', fontSize: 11 }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      value={row.points}
+                      onChange={ev => setRow(t.idx, { points: ev.target.value })}
+                      onBlur={() => saveRow(t)}
+                      onKeyDown={e => e.key === 'Enter' && saveRow(t)}
+                      style={{ width: 52, border: '1px solid #ddd', padding: '1px 4px', fontSize: 11 }}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {t.inputAvailable
+                      ? <a href={problems.testInput(problemId, t.idx)} target="_blank" rel="noreferrer" className="btn btn-sm">↓</a>
+                      : <span style={{ color: '#ccc', fontSize: 10 }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {t.answerAvailable
+                      ? <a href={problems.testAnswer(problemId, t.idx)} target="_blank" rel="noreferrer" className="btn btn-sm">↓</a>
+                      : <span style={{ color: '#ccc', fontSize: 10 }}>—</span>}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(t.idx)} title="Delete">Del</button>
+                    {' '}
+                    <button className="btn btn-sm" onClick={() => handleMove(t.idx, 'up')} disabled={i === 0} title="Move up">↑</button>
+                    {' '}
+                    <button className="btn btn-sm" onClick={() => handleMove(t.idx, 'down')} disabled={i === tests.length - 1} title="Move down">↓</button>
+                    {' '}
+                    <button className="btn btn-sm" onClick={() => handleViewInput(t.idx)} disabled={!t.inputAvailable} title="View input">View</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {tests.length === 0 && (
+              <tr><td colSpan={10} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
+      {/* Input preview panel */}
       {viewInput && (
         <div style={{ marginBottom: 12 }}>
           <div className="flex-between" style={{ marginBottom: 4 }}>
-            <strong>Test {viewInput.idx} input:</strong>
+            <strong>Test {viewInput.idx}:</strong>
             <button className="btn btn-sm" onClick={() => setViewInput(null)}>Close</button>
           </div>
           <div className="code-view">{viewInput.content}</div>
         </div>
       )}
 
-      <div className="section-header">Add Test</div>
-      <form onSubmit={handleAdd}>
-        <div className="form-row">
-          <label>Method:</label>
-          <select value={newTest.method} onChange={e => setNewTest({ ...newTest, method: e.target.value })}>
-            <option value="manual">Manual</option>
-            <option value="generated">Generated</option>
-          </select>
-        </div>
-        {newTest.method === 'manual' ? (
-          <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-            <label>Input:</label>
-            <textarea
-              value={newTest.input}
-              onChange={e => setNewTest({ ...newTest, input: e.target.value })}
-              style={{ width: '100%', minHeight: 80 }}
-            />
+      {/* ── Groups section ─────────────────────────────────────────────── */}
+      {groups.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div className="section-header" style={{ marginBottom: 8 }}>Groups points policy and dependencies</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="poly-table" style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 60 }}>Name</th>
+                  <th style={{ width: 50 }}>Tests</th>
+                  <th style={{ width: 60 }}>Points</th>
+                  <th style={{ width: 160 }}>Points policy</th>
+                  <th style={{ width: 140 }}>Feedback policy</th>
+                  <th>Dependencies</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map(g => (
+                  <GroupRow
+                    key={g.id}
+                    group={g}
+                    testCount={tests.filter(t => t.group_name === g.name).length}
+                    onUpdateField={updateGroupField}
+                    onRemoveDep={removeGroupDep}
+                    onAddDep={addGroupDep}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
-        ) : (
-          <div className="form-row">
-            <label>Generator command:</label>
-            <input type="text" value={newTest.cmd} onChange={e => setNewTest({ ...newTest, cmd: e.target.value })}
-              placeholder="gen rand 100 100000 42" style={{ width: 300 }} />
-          </div>
-        )}
-        <div className="form-row">
-          <label>Description:</label>
-          <input type="text" value={newTest.description} onChange={e => setNewTest({ ...newTest, description: e.target.value })} style={{ width: 200 }} />
         </div>
-        <div className="form-row">
-          <label>Sample:</label>
-          <input type="checkbox" checked={newTest.sample} onChange={e => setNewTest({ ...newTest, sample: e.target.checked })} />
+      )}
+
+      {/* ── Add Group form ─────────────────────────────────────────────── */}
+      <details style={{ marginBottom: 16 }}>
+        <summary style={{ cursor: 'pointer', color: '#2264b0', fontSize: 12, marginBottom: 4 }}>
+          {groups.length === 0 ? '+ Add Group / Enable Groups' : '+ Add/Edit Group'}
+        </summary>
+        <div style={{ paddingTop: 8 }}>
+          <form onSubmit={handleSaveGroup}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 8 }}>
+              <label style={{ fontSize: 12 }}>
+                Name:&nbsp;
+                <input value={newGroup.name} onChange={e => setNewGroup({ ...newGroup, name: e.target.value })}
+                  required style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Points:&nbsp;
+                <input type="number" value={newGroup.points} onChange={e => setNewGroup({ ...newGroup, points: e.target.value })}
+                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Points policy:&nbsp;
+                <select value={newGroup.pointsPolicy} onChange={e => setNewGroup({ ...newGroup, pointsPolicy: e.target.value })}
+                  style={{ fontSize: 12 }}>
+                  <option value="each-test">EACH_TEST</option>
+                  <option value="complete-group">COMPLETE_GROUP</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Feedback:&nbsp;
+                <select value={newGroup.feedbackPolicy} onChange={e => setNewGroup({ ...newGroup, feedbackPolicy: e.target.value })}
+                  style={{ fontSize: 12 }}>
+                  <option value="complete">COMPLETE</option>
+                  <option value="icpc">ICPC</option>
+                  <option value="points">POINTS</option>
+                  <option value="none">NONE</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Deps (comma):&nbsp;
+                <input value={newGroup.dependencies} onChange={e => setNewGroup({ ...newGroup, dependencies: e.target.value })}
+                  placeholder="0,1" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+              </label>
+              <button type="submit" className="btn btn-primary btn-sm">Save Group</button>
+            </div>
+          </form>
         </div>
-        <div className="form-row">
-          <label>Group:</label>
-          <input type="text" value={newTest.group} onChange={e => setNewTest({ ...newTest, group: e.target.value })} style={{ width: 80 }} />
+      </details>
+
+      {/* ── Add Test form ──────────────────────────────────────────────── */}
+      <details open>
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: '#2264b0', marginBottom: 4 }}>+ Add Test</summary>
+        <div style={{ paddingTop: 8 }}>
+          <form onSubmit={handleAddTest}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: 8 }}>
+              <label style={{ fontSize: 12 }}>
+                Method:&nbsp;
+                <select value={newTest.method} onChange={e => setNewTest({ ...newTest, method: e.target.value })}
+                  style={{ fontSize: 12 }}>
+                  <option value="manual">Manual</option>
+                  <option value="generated">Generated</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Desc:&nbsp;
+                <input value={newTest.description} onChange={e => setNewTest({ ...newTest, description: e.target.value })}
+                  style={{ width: 120, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+              </label>
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="checkbox" checked={newTest.sample} onChange={e => setNewTest({ ...newTest, sample: e.target.checked })} />
+                Sample
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Group:&nbsp;
+                <input value={newTest.group} onChange={e => setNewTest({ ...newTest, group: e.target.value })}
+                  style={{ width: 50, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Points:&nbsp;
+                <input type="number" value={newTest.points} onChange={e => setNewTest({ ...newTest, points: e.target.value })}
+                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+              </label>
+            </div>
+            {newTest.method === 'manual' ? (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, marginBottom: 2 }}>Input:</div>
+                <textarea
+                  value={newTest.input}
+                  onChange={e => setNewTest({ ...newTest, input: e.target.value })}
+                  style={{ width: '100%', minHeight: 80, fontFamily: 'monospace', fontSize: 11, border: '1px solid #aaa', padding: 4, resize: 'vertical' }}
+                />
+              </div>
+            ) : (
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ fontSize: 12 }}>
+                  Generator command:&nbsp;
+                  <input value={newTest.cmd} onChange={e => setNewTest({ ...newTest, cmd: e.target.value })}
+                    placeholder="gen rand 100 42" style={{ width: 300, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                </label>
+              </div>
+            )}
+            <button type="submit" className="btn btn-primary btn-sm">Add Test</button>
+          </form>
         </div>
-        <div className="form-row">
-          <label>Points:</label>
-          <input type="number" value={newTest.points} onChange={e => setNewTest({ ...newTest, points: e.target.value })} style={{ width: 80 }} />
-        </div>
-        <div className="form-actions">
-          <button type="submit" className="btn btn-primary">Add Test</button>
-        </div>
-      </form>
+      </details>
     </div>
+  );
+}
+
+// ── Inline Group Row ──────────────────────────────────────────────────────────
+function GroupRow({
+  group, testCount, onUpdateField, onRemoveDep, onAddDep
+}: {
+  group: TestGroup;
+  testCount: number;
+  onUpdateField: (g: TestGroup, field: string, value: string) => void;
+  onRemoveDep: (g: TestGroup, dep: string) => void;
+  onAddDep: (g: TestGroup, dep: string) => void;
+}) {
+  const [editPts, setEditPts] = useState(String(group.points));
+  const [addingDep, setAddingDep] = useState('');
+
+  return (
+    <tr>
+      <td><strong>{group.name}</strong></td>
+      <td style={{ textAlign: 'center', color: '#666' }}>{testCount}</td>
+      <td>
+        <input
+          value={editPts}
+          onChange={e => setEditPts(e.target.value)}
+          onBlur={() => onUpdateField(group, 'points', editPts)}
+          onKeyDown={e => e.key === 'Enter' && onUpdateField(group, 'points', editPts)}
+          style={{ width: 52, fontSize: 11, padding: '1px 4px', border: '1px solid #ddd' }}
+        />
+      </td>
+      <td>
+        <select
+          value={group.points_policy}
+          onChange={e => onUpdateField(group, 'pointsPolicy', e.target.value)}
+          style={{ fontSize: 11 }}
+        >
+          <option value="each-test">EACH_TEST</option>
+          <option value="complete-group">COMPLETE_GROUP</option>
+        </select>
+      </td>
+      <td>
+        <select
+          value={group.feedback_policy}
+          onChange={e => onUpdateField(group, 'feedbackPolicy', e.target.value)}
+          style={{ fontSize: 11 }}
+        >
+          <option value="complete">COMPLETE</option>
+          <option value="icpc">ICPC</option>
+          <option value="points">POINTS</option>
+          <option value="none">NONE</option>
+        </select>
+      </td>
+      <td>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+          {group.dependencies.map(dep => (
+            <span key={dep} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: '#e8e8f8', border: '1px solid #ccd', borderRadius: 3, padding: '1px 4px', fontSize: 11 }}>
+              {dep}
+              <button
+                onClick={() => onRemoveDep(group, dep)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a00', fontSize: 11, lineHeight: 1, padding: 0, marginLeft: 2 }}
+                title="Remove dependency"
+              >×</button>
+            </span>
+          ))}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            <input
+              value={addingDep}
+              onChange={e => setAddingDep(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { onAddDep(group, addingDep); setAddingDep(''); } }}
+              placeholder="Add…"
+              style={{ width: 44, fontSize: 11, padding: '1px 4px', border: '1px solid #ccc' }}
+            />
+            <button
+              className="btn btn-sm"
+              onClick={() => { onAddDep(group, addingDep); setAddingDep(''); }}
+              style={{ padding: '1px 6px', fontSize: 11 }}
+            >+</button>
+          </span>
+        </div>
+      </td>
+    </tr>
   );
 }
