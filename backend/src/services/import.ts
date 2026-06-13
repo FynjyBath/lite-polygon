@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { safeExtractZip } from '../utils/zip';
+import AdmZip from 'adm-zip';
 import { parseProblemXml } from '../polygon-xml/parser';
 import { db, getProblemDir } from '../db/schema';
 import {
@@ -29,34 +29,29 @@ export async function importPackage(
   const errors: string[] = [];
   let filesImported = 0;
 
-  // Extract to temp dir first
-  const tmpDir = zipPath + '_extracted';
-  try {
-    fs.mkdirSync(tmpDir, { recursive: true });
-    safeExtractZip(zipPath, tmpDir);
+  // Load zip entirely into memory once (AdmZip keeps decompressed data cached per-entry)
+  const MAX_ZIP_SIZE = 500 * 1024 * 1024; // 500 MB
+  const zipStat = fs.statSync(zipPath);
+  if (zipStat.size > MAX_ZIP_SIZE) throw new Error(`Zip too large: ${zipStat.size} bytes`);
 
-    // Find problem.xml - it might be at root or inside a subdirectory
-    let problemXmlPath = path.join(tmpDir, 'problem.xml');
-    if (!fs.existsSync(problemXmlPath)) {
-      // Try one level deep
-      const entries = fs.readdirSync(tmpDir);
-      for (const e of entries) {
-        const candidate = path.join(tmpDir, e, 'problem.xml');
-        if (fs.existsSync(candidate)) {
-          problemXmlPath = candidate;
-          break;
-        }
-      }
-    }
-    if (!fs.existsSync(problemXmlPath)) {
-      throw new Error('problem.xml not found in zip');
-    }
+  const zip = new AdmZip(zipPath);
+  const zipEntries = zip.getEntries();
+  if (zipEntries.length > 20000) throw new Error(`Too many files in zip: ${zipEntries.length}`);
 
-    const xmlContent = fs.readFileSync(problemXmlPath, 'utf-8');
-    const model = parseProblemXml(xmlContent);
-    const packageRoot = path.dirname(problemXmlPath);
+  // Find problem.xml entry in memory — at root or one level deep
+  let xmlEntry = zipEntries.find(e => !e.isDirectory && e.entryName === 'problem.xml');
+  if (!xmlEntry) {
+    xmlEntry = zipEntries.find(e => !e.isDirectory && /^[^/]+\/problem\.xml$/.test(e.entryName));
+  }
+  if (!xmlEntry) throw new Error('problem.xml not found in zip');
 
-    const shortName = model.shortName || `problem_${Date.now()}`;
+  // Strip the subdirectory prefix so all paths become relative to package root
+  const prefix = xmlEntry.entryName === 'problem.xml' ? '' : xmlEntry.entryName.split('/')[0] + '/';
+
+  const xmlContent = xmlEntry.getData().toString('utf-8');
+  const model = parseProblemXml(xmlContent);
+
+  const shortName = model.shortName || `problem_${Date.now()}`;
 
     // Check if problem exists for this user
     let problemId: number;
@@ -118,8 +113,22 @@ export async function importPackage(
       upsertProblemName(problemId, n.language, n.value);
     }
 
-    // Copy all files from package to problem dir
-    filesImported = copyPackageFiles(packageRoot, problemDir, warnings);
+    // Extract all zip entries directly into problemDir (single pass, no temp copy)
+    for (const entry of zipEntries) {
+      if (entry.isDirectory) continue;
+      // Strip the package-root prefix so paths are relative to problem dir
+      const relName = prefix ? entry.entryName.slice(prefix.length) : entry.entryName;
+      if (!relName) continue;
+      const normalized = path.normalize(relName);
+      if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
+        warnings.push(`Skipped unsafe path: ${entry.entryName}`);
+        continue;
+      }
+      const dest = path.join(problemDir, normalized);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, entry.getData());
+      filesImported++;
+    }
 
     // Testsets + tests
     let testsImported = 0;
@@ -350,45 +359,12 @@ export async function importPackage(
     // Store raw problem.xml for reference
     fs.writeFileSync(path.join(problemDir, 'problem.xml'), xmlContent);
 
-    return {
-      problemId,
-      shortName,
-      warnings,
-      errors,
-      filesImported,
-      testsImported,
-    };
-  } finally {
-    // Cleanup temp dir
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  }
-}
-
-function copyPackageFiles(sourceDir: string, destDir: string, warnings: string[]): number {
-  let count = 0;
-  if (!fs.existsSync(sourceDir)) return 0;
-
-  function copyRecursive(src: string, dst: string): void {
-    const stat = fs.statSync(src);
-    if (stat.isDirectory()) {
-      fs.mkdirSync(dst, { recursive: true });
-      const entries = fs.readdirSync(src);
-      for (const e of entries) {
-        copyRecursive(path.join(src, e), path.join(dst, e));
-      }
-    } else {
-      fs.mkdirSync(path.dirname(dst), { recursive: true });
-      fs.copyFileSync(src, dst);
-      count++;
-    }
-  }
-
-  try {
-    copyRecursive(sourceDir, destDir);
-  } catch (e) {
-    warnings.push(`File copy warning: ${(e as Error).message}`);
-  }
-  return count;
+  return {
+    problemId,
+    shortName,
+    warnings,
+    errors,
+    filesImported,
+    testsImported,
+  };
 }
