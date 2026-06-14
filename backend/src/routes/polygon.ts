@@ -65,9 +65,9 @@ async function downloadPolygonPackage(pgProblemId: number, packageId: number, pk
       apiKey: key,
       time,
     };
-    const sig = computeApiSig('package', params, secret);
+    const sig = computeApiSig('problem.package', params, secret);
     const qs = new URLSearchParams({ ...params, apiSig: sig }).toString();
-    const res = await fetch(`${POLYGON_BASE}/package?${qs}`);
+    const res = await fetch(`${POLYGON_BASE}/problem.package?${qs}`);
     const ct = res.headers.get('content-type') ?? '';
     if (ct.includes('application/json') || ct.includes('text/plain')) {
       const text = await res.text();
