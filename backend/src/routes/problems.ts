@@ -4,7 +4,7 @@ import path from 'path';
 import { getAuthUser } from './auth';
 import {
   listProblems, listAllProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem,
-  listSolutions, getSolution, getSolutionByPath, upsertSolution,
+  listSolutions, getSolution, getSolutionByPath, upsertSolution, deleteSolution,
   getAsset, upsertAsset, listFiles, upsertFile,
   getTestset, getOrCreateTestset, listTests, getTest, upsertTest, deleteTest as deleteTestDb,
   upsertTestGroup, getTestGroups, getGroupDependencies,
@@ -292,7 +292,14 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
     if (!getProblemForUser(id, user.id, reply)) return;
-    return ok(listSolutions(id));
+    const problemDir = getProblemDir(id);
+    const solutions = listSolutions(id).map(s => {
+      const filePath = path.join(problemDir, s.source_path);
+      let size = 0, modified = '';
+      try { const st = fs.statSync(filePath); size = st.size; modified = st.mtime.toISOString(); } catch { /* file missing */ }
+      return { ...s, size, modified, author: user.username };
+    });
+    return ok(solutions);
   });
 
   // problem.saveSolution
@@ -926,6 +933,113 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return ok(null);
   });
 
+  // problem.deleteSolution
+  app.post('/api/problem.deleteSolution', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const solId = parseInt(body.solutionId ?? '');
+    if (!id || !solId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and solutionId required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const solution = getSolution(solId);
+    if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
+    const filePath = path.join(getProblemDir(id), solution.source_path);
+    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    deleteSolution(solId);
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.downloadSolution
+  app.get('/api/problem.downloadSolution', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId, solutionId } = req.query as { problemId?: string; solutionId?: string };
+    const id = parseInt(problemId ?? '');
+    const solId = parseInt(solutionId ?? '');
+    if (!id || !solId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and solutionId required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const solution = getSolution(solId);
+    if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
+    const filePath = path.join(getProblemDir(id), solution.source_path);
+    if (!fs.existsSync(filePath)) return reply.code(404).send({ status: 'FAILED', comment: 'File not found' });
+    const fileName = path.basename(solution.source_path);
+    reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+    reply.header('Content-Type', 'application/octet-stream');
+    return reply.send(fs.readFileSync(filePath));
+  });
+
+  // problem.renameSolution
+  app.post('/api/problem.renameSolution', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const solId = parseInt(body.solutionId ?? '');
+    const newName = (body.newName ?? '').trim();
+    if (!id || !solId || !newName) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and newName required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const solution = getSolution(solId);
+    if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
+    const problemDir = getProblemDir(id);
+    const dir = path.dirname(solution.source_path);
+    const newPath = path.join(dir, newName);
+    const oldFile = path.join(problemDir, solution.source_path);
+    const newFile = path.join(problemDir, newPath);
+    if (fs.existsSync(oldFile)) {
+      fs.mkdirSync(path.dirname(newFile), { recursive: true });
+      fs.renameSync(oldFile, newFile);
+    }
+    db.prepare('UPDATE solutions SET source_path = ? WHERE id = ?').run(newPath, solId);
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.updateSolutionLang
+  app.post('/api/problem.updateSolutionLang', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const solId = parseInt(body.solutionId ?? '');
+    if (!id || !solId || !body.sourceType) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and sourceType required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const solution = getSolution(solId);
+    if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
+    db.prepare('UPDATE solutions SET source_type = ? WHERE id = ?').run(body.sourceType, solId);
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.updateSolutionTag
+  app.post('/api/problem.updateSolutionTag', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const solId = parseInt(body.solutionId ?? '');
+    if (!id || !solId || !body.tag) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and tag required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const solution = getSolution(solId);
+    if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
+    db.prepare('UPDATE solutions SET tag = ? WHERE id = ?').run(body.tag, solId);
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.editSolution — save edited content
+  app.post('/api/problem.editSolution', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as Record<string, string>;
+    const id = parseInt(body.problemId ?? '');
+    const solId = parseInt(body.solutionId ?? '');
+    if (!id || !solId || body.content === undefined) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and content required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const solution = getSolution(solId);
+    if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
+    const filePath = path.join(getProblemDir(id), solution.source_path);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, body.content, 'utf-8');
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
   // problem.script - get doall script
   app.get('/api/problem.script', async (req, reply) => {
     const user = await auth(req, reply);
@@ -1281,6 +1395,9 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const insertPos = Math.max(0, Math.min(targetIdx - 1, remaining.length));
     const newOrder = [...remaining.slice(0, insertPos), ...selected, ...remaining.slice(insertPos)];
 
+    // Capture old->new index mapping before modifying the DB
+    const renames = newOrder.map((t, i) => ({ oldIdx: t.idx, newIdx: i + 1 }));
+
     db.transaction(() => {
       const bigOffset = allTests.length + 10000;
       db.prepare('UPDATE tests SET idx = idx + ? WHERE testset_id = ?').run(bigOffset, ts.id);
@@ -1288,6 +1405,26 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
         db.prepare('UPDATE tests SET idx = ? WHERE id = ?').run(i + 1, newOrder[i].id);
       }
     })();
+
+    // Rename files on disk: first to temp names, then to final positions
+    const problemDir = getProblemDir(id);
+    const patterns = [ts.input_path_pattern, ts.answer_path_pattern];
+    for (const { oldIdx } of renames) {
+      const n = String(oldIdx).padStart(2, '0');
+      for (const pat of patterns) {
+        const src = path.join(problemDir, pat.replace('%02d', n));
+        if (fs.existsSync(src)) fs.renameSync(src, src + '._move');
+      }
+    }
+    for (const { oldIdx, newIdx } of renames) {
+      const oldN = String(oldIdx).padStart(2, '0');
+      const newN = String(newIdx).padStart(2, '0');
+      for (const pat of patterns) {
+        const tmp = path.join(problemDir, pat.replace('%02d', oldN) + '._move');
+        const dst = path.join(problemDir, pat.replace('%02d', newN));
+        if (fs.existsSync(tmp)) fs.renameSync(tmp, dst);
+      }
+    }
 
     updateProblem(id, { modified: 1 });
     return ok({ count: newOrder.length });

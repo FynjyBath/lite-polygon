@@ -93,6 +93,13 @@ export const problems = {
   saveSolution: (data: Record<string, unknown>) => post<{ id: number }>('problem.saveSolution', data),
   viewSolution: (problemId: number, solutionId: number) =>
     get<string>('problem.viewSolution', { problemId, solutionId }),
+  deleteSolution: (data: Record<string, unknown>) => post<null>('problem.deleteSolution', data),
+  downloadSolutionUrl: (problemId: number, solutionId: number) =>
+    `${BASE}/problem.downloadSolution?problemId=${problemId}&solutionId=${solutionId}`,
+  renameSolution: (data: Record<string, unknown>) => post<null>('problem.renameSolution', data),
+  updateSolutionLang: (data: Record<string, unknown>) => post<null>('problem.updateSolutionLang', data),
+  updateSolutionTag: (data: Record<string, unknown>) => post<null>('problem.updateSolutionTag', data),
+  editSolution: (data: Record<string, unknown>) => post<null>('problem.editSolution', data),
   checker: (problemId: number) => get<Asset | null>('problem.checker', { problemId }),
   setChecker: (data: Record<string, unknown>) => post<null>('problem.setChecker', data),
   validator: (problemId: number) => get<Asset | null>('problem.validator', { problemId }),
@@ -254,11 +261,15 @@ export interface Asset {
 
 export interface Solution {
   id: number;
+  problem_id: number;
   source_path: string;
   source_type: string;
   binary_path: string;
   tag: string;
   compiled_binary: string;
+  size: number;
+  modified: string;
+  author: string;
 }
 
 export interface TestEntry {

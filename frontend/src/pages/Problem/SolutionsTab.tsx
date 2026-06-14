@@ -3,19 +3,72 @@ import { problems, Solution } from '../../api/client';
 
 interface Props { problemId: number; }
 
-const TAGS = ['main', 'accepted', 'wrong-answer', 'time-limit-exceeded', 'time-limit-exceeded-or-accepted',
-  'time-limit-exceeded-or-memory-limit-exceeded', 'memory-limit-exceeded', 'presentation-error',
-  'runtime-error', 'do-not-run', 'rejected'];
+const LANGUAGE_OPTIONS = [
+  { value: 'cpp.g++17',  label: 'GNU G++17 7.3.0' },
+  { value: 'cpp.g++20',  label: 'GNU G++20 11.2.0' },
+  { value: 'cpp.g++23',  label: 'GNU G++23 14.2.0' },
+  { value: 'python.3',   label: 'Python 3.8.10' },
+  { value: 'pypy.3',     label: 'PyPy 3.9.10' },
+  { value: 'java8',      label: 'Java 8 (javac)' },
+  { value: 'java11',     label: 'Java 11 (javac)' },
+  { value: 'java17',     label: 'Java 17 (javac)' },
+];
+
+const TAG_OPTIONS = [
+  { value: 'main',                                    label: 'Main correct solution',                    color: '#007700' },
+  { value: 'accepted',                                label: 'Accepted',                                 color: '#007700' },
+  { value: 'rejected',                                label: 'Rejected',                                 color: '#888888' },
+  { value: 'wrong-answer',                            label: 'Wrong answer',                             color: '#cc0000' },
+  { value: 'presentation-error',                      label: 'Presentation error',                       color: '#cc0000' },
+  { value: 'time-limit-exceeded',                     label: 'Time limit exceeded',                      color: '#cc0000' },
+  { value: 'memory-limit-exceeded',                   label: 'Memory limit exceeded',                    color: '#cc0000' },
+  { value: 'time-limit-exceeded-or-accepted',         label: 'Time limit exceeded or accepted',          color: '#cc6600' },
+  { value: 'time-limit-exceeded-or-memory-limit-exceeded', label: 'TLE or MLE',                         color: '#cc6600' },
+  { value: 'runtime-error',                           label: 'Runtime error',                            color: '#cc0000' },
+  { value: 'do-not-run',                              label: 'Do not run',                               color: '#888888' },
+];
+
+function tagInfo(tag: string) {
+  return TAG_OPTIONS.find(t => t.value === tag) ?? { label: tag, color: '#333' };
+}
+
+function langLabel(sourceType: string) {
+  return LANGUAGE_OPTIONS.find(l => l.value === sourceType)?.label ?? sourceType;
+}
+
+function fmtSize(bytes: number) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(2)} kB`;
+}
+
+function fmtDate(iso: string) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 
 export default function SolutionsTab({ problemId }: Props) {
   const [solutions, setSolutions] = useState<Solution[]>([]);
-  const [content, setContent] = useState('');
-  const [newSol, setNewSol] = useState({ sourceType: 'cpp.g++17', tag: 'accepted' });
-  const [derivedPath, setDerivedPath] = useState('');
-  const [viewSrc, setViewSrc] = useState<{ path: string; content: string } | null>(null);
-  const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Rename state: solutionId → pending name
+  const [renaming, setRenaming] = useState<Record<number, string>>({});
+
+  // Edit modal
+  const [editSol, setEditSol] = useState<{ sol: Solution; content: string } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  // New file dialog
+  const [newDialog, setNewDialog] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newLang, setNewLang] = useState('cpp.g++17');
+  const [newTag, setNewTag] = useState('accepted');
+  const [newContent, setNewContent] = useState('');
+  const [newSaving, setNewSaving] = useState(false);
+
+  const addFilesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { reload(); }, [problemId]);
 
@@ -23,137 +76,264 @@ export default function SolutionsTab({ problemId }: Props) {
     problems.solutions(problemId).then(setSolutions).catch(e => setError(e.message));
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setContent(reader.result as string);
-    reader.readAsText(file);
-    setDerivedPath('solutions/' + file.name);
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(''); setError('');
-    if (!derivedPath && !content) { setError('Upload a file or paste code'); return; }
-    const sourcePath = derivedPath || 'solutions/main.cpp';
+  async function handleDelete(sol: Solution) {
+    if (!confirm(`Delete ${sol.source_path}?`)) return;
     try {
-      await problems.saveSolution({ problemId, sourcePath, ...newSol, content: content || undefined });
-      setMsg('Solution saved');
-      setNewSol({ sourceType: 'cpp.g++17', tag: 'accepted' });
-      setContent('');
-      setDerivedPath('');
-      if (fileRef.current) fileRef.current.value = '';
+      await problems.deleteSolution({ problemId, solutionId: sol.id });
       reload();
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    }
+    } catch (e: unknown) { setError((e as Error).message); }
   }
 
-  async function handleView(sol: Solution) {
+  function handleDownload(sol: Solution) {
+    const url = problems.downloadSolutionUrl(problemId, sol.id);
+    window.open(url, '_blank');
+  }
+
+  async function handleRename(sol: Solution) {
+    const newName = renaming[sol.id]?.trim();
+    if (!newName || newName === sol.source_path.split('/').pop()) {
+      setRenaming(r => { const c = { ...r }; delete c[sol.id]; return c; });
+      return;
+    }
+    try {
+      await problems.renameSolution({ problemId, solutionId: sol.id, newName });
+      setRenaming(r => { const c = { ...r }; delete c[sol.id]; return c; });
+      reload();
+    } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  async function handleLangChange(sol: Solution, sourceType: string) {
+    try {
+      await problems.updateSolutionLang({ problemId, solutionId: sol.id, sourceType });
+      reload();
+    } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  async function handleTagChange(sol: Solution, tag: string) {
+    try {
+      await problems.updateSolutionTag({ problemId, solutionId: sol.id, tag });
+      reload();
+    } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  async function handleOpenEdit(sol: Solution) {
     try {
       const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
       const res = await fetch(`${base}/api/problem.viewSolution?problemId=${problemId}&solutionId=${sol.id}`, { credentials: 'include' });
       const text = await res.text();
-      setViewSrc({ path: sol.source_path, content: text });
-    } catch {
-      setError('Failed to load');
-    }
+      setEditSol({ sol, content: text });
+    } catch { setError('Failed to load solution'); }
   }
 
-  function tagColor(tag: string): string {
-    if (tag === 'main') return '#00a';
-    if (tag.includes('wrong-answer')) return 'red';
-    if (tag.includes('accepted')) return 'green';
-    if (tag.includes('time-limit')) return '#c60';
-    if (tag.includes('memory')) return 'purple';
-    if (tag === 'rejected') return '#888';
-    return '#333';
+  async function handleSaveEdit() {
+    if (!editSol) return;
+    setEditSaving(true);
+    try {
+      await problems.editSolution({ problemId, solutionId: editSol.sol.id, content: editSol.content });
+      setEditSol(null);
+      reload();
+    } catch (e: unknown) { setError((e as Error).message); }
+    finally { setEditSaving(false); }
+  }
+
+  async function handleAddFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    for (const file of files) {
+      const content = await file.text();
+      const sourcePath = 'solutions/' + file.name;
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+      const sourceType = ext === 'py' ? 'python.3' : ext === 'java' ? 'java17' : 'cpp.g++17';
+      try {
+        await problems.saveSolution({ problemId, sourcePath, sourceType, tag: 'accepted', content });
+      } catch (e: unknown) { setError((e as Error).message); }
+    }
+    if (addFilesRef.current) addFilesRef.current.value = '';
+    reload();
+  }
+
+  async function handleNewFile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setNewSaving(true);
+    const sourcePath = 'solutions/' + newName.trim();
+    try {
+      await problems.saveSolution({ problemId, sourcePath, sourceType: newLang, tag: newTag, content: newContent });
+      setNewDialog(false);
+      setNewName(''); setNewContent(''); setNewLang('cpp.g++17'); setNewTag('accepted');
+      reload();
+    } catch (e: unknown) { setError((e as Error).message); }
+    finally { setNewSaving(false); }
   }
 
   return (
     <div>
-      <div className="flex-between" style={{ marginBottom: 8 }}>
-        <h2>Solutions</h2>
-        <span style={{ color: '#666', fontSize: 12 }}>{solutions.length} solution(s)</span>
+      {error && <div className="alert alert-error" style={{ marginBottom: 8 }}>{error}<button onClick={() => setError('')} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>×</button></div>}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <strong>Solution files</strong>
+        <span>
+          <a className="poly-link" style={{ marginRight: 12, cursor: 'pointer' }} onClick={() => setNewDialog(true)}>New File</a>
+          <label className="poly-link" style={{ cursor: 'pointer' }}>
+            Add Files
+            <input ref={addFilesRef} type="file" multiple accept=".cpp,.py,.java,.pas,.c,.go" style={{ display: 'none' }} onChange={handleAddFiles} />
+          </label>
+        </span>
       </div>
 
-      {msg && <div className="alert alert-success">{msg}</div>}
-      {error && <div className="alert alert-error">{error}</div>}
-
-      <table className="poly-table" style={{ marginBottom: 12 }}>
+      <table className="poly-table" style={{ width: '100%', marginBottom: 8 }}>
         <thead>
-          <tr><th>#</th><th>Source Path</th><th>Type</th><th>Tag</th><th>Compiled</th><th>Actions</th></tr>
+          <tr>
+            <th>Author</th>
+            <th>Name</th>
+            <th>Language</th>
+            <th>Length</th>
+            <th>Modified</th>
+            <th>Type</th>
+            <th style={{ textAlign: 'right' }}>
+              <span style={{ color: '#00c' }}>Delete&nbsp;Download&nbsp;Edit&nbsp;View</span>
+            </th>
+          </tr>
         </thead>
         <tbody>
-          {solutions.map(s => (
-            <tr key={s.id}>
-              <td>{s.id}</td>
-              <td><span className="source-type">{s.source_path}</span></td>
-              <td><span className="source-type">{s.source_type}</span></td>
-              <td style={{ color: tagColor(s.tag), fontWeight: s.tag === 'main' ? 'bold' : 'normal' }}>
-                {s.tag}
-              </td>
-              <td>{s.compiled_binary ? '✓' : '—'}</td>
-              <td>
-                <button className="btn btn-sm" onClick={() => handleView(s)}>View</button>
-              </td>
-            </tr>
-          ))}
-          {solutions.length === 0 && <tr><td colSpan={6} style={{ color: '#888' }}>No solutions</td></tr>}
+          {solutions.map(sol => {
+            const tag = tagInfo(sol.tag);
+            const fileName = sol.source_path.split('/').pop() ?? sol.source_path;
+            const isRenaming = sol.id in renaming;
+            return (
+              <tr key={sol.id}>
+                <td style={{ whiteSpace: 'nowrap' }}>{sol.author}</td>
+                <td style={{ minWidth: 160 }}>
+                  {isRenaming ? (
+                    <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <input
+                        value={renaming[sol.id]}
+                        onChange={e => setRenaming(r => ({ ...r, [sol.id]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleRename(sol); if (e.key === 'Escape') setRenaming(r => { const c = { ...r }; delete c[sol.id]; return c; }); }}
+                        autoFocus
+                        style={{ fontSize: 12, padding: '1px 4px', width: 140 }}
+                      />
+                      <a className="poly-link" style={{ cursor: 'pointer', fontSize: 11 }} onClick={() => handleRename(sol)}>OK</a>
+                    </span>
+                  ) : (
+                    <span>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{fileName}</span>
+                      <br />
+                      <a className="poly-link" style={{ fontSize: 11, cursor: 'pointer' }} onClick={() => { /* note: no-op */ }}>Note</a>
+                      {' '}
+                      <a className="poly-link" style={{ fontSize: 11, cursor: 'pointer' }}
+                        onClick={() => setRenaming(r => ({ ...r, [sol.id]: fileName }))}>Rename</a>
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <select
+                    value={sol.source_type}
+                    onChange={e => handleLangChange(sol, e.target.value)}
+                    style={{ fontSize: 12, padding: '2px 4px' }}
+                  >
+                    {LANGUAGE_OPTIONS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                  </select>
+                </td>
+                <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtSize(sol.size)}</td>
+                <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(sol.modified)}</td>
+                <td style={{ minWidth: 130 }}>
+                  <span style={{ color: tag.color, fontWeight: sol.tag === 'main' ? 'bold' : 'normal', fontSize: 13 }}>
+                    {tag.label}
+                  </span>
+                  <br />
+                  <select
+                    value={sol.tag}
+                    onChange={e => handleTagChange(sol, e.target.value)}
+                    style={{ fontSize: 11, padding: '1px 2px', marginTop: 2 }}
+                  >
+                    {TAG_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </td>
+                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                  <a className="poly-link" style={{ cursor: 'pointer', marginRight: 6, fontSize: 12 }}
+                    onClick={() => handleDelete(sol)}>Delete</a>
+                  <a className="poly-link" style={{ cursor: 'pointer', marginRight: 6, fontSize: 12 }}
+                    onClick={() => handleDownload(sol)}>Download</a>
+                  <a className="poly-link" style={{ cursor: 'pointer', marginRight: 6, fontSize: 12 }}
+                    onClick={() => handleOpenEdit(sol)}>Edit</a>
+                  <a className="poly-link" style={{ cursor: 'pointer', fontSize: 12 }}
+                    onClick={() => handleOpenEdit(sol)}>View</a>
+                </td>
+              </tr>
+            );
+          })}
+          {solutions.length === 0 && (
+            <tr><td colSpan={7} style={{ color: '#888', textAlign: 'center', padding: 16 }}>No solution files</td></tr>
+          )}
         </tbody>
       </table>
 
-      {viewSrc && (
-        <div style={{ marginBottom: 12 }}>
-          <div className="flex-between" style={{ marginBottom: 4 }}>
-            <strong>{viewSrc.path}</strong>
-            <button className="btn btn-sm" onClick={() => setViewSrc(null)}>Close</button>
+      <p style={{ fontSize: 12, color: '#555', margin: '4px 0' }}>Upload solution files here.</p>
+      <p style={{ fontSize: 12, color: '#555', margin: '4px 0' }}>There should be exactly one "Main correct solution" (also known as "model solution"). It will be used to generate jury answers.</p>
+
+      {/* Edit / View modal */}
+      {editSol && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 4, width: '80vw', maxWidth: 900, maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <strong>{editSol.sol.source_path}</strong>
+              <button className="btn btn-sm" onClick={() => setEditSol(null)}>Close</button>
+            </div>
+            <textarea
+              value={editSol.content}
+              onChange={e => setEditSol(s => s ? { ...s, content: e.target.value } : s)}
+              style={{ flex: 1, minHeight: 400, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+            />
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={handleSaveEdit} disabled={editSaving}>
+                {editSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button className="btn" onClick={() => setEditSol(null)}>Cancel</button>
+            </div>
           </div>
-          <div className="code-view">{viewSrc.content}</div>
         </div>
       )}
 
-      <div className="section-header">Add Solution</div>
-      <form onSubmit={handleSave}>
-        <div className="form-row">
-          <label>Upload file:</label>
-          <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
-            style={{ fontSize: 12 }} />
-        </div>
-        {derivedPath && (
-          <div className="form-row">
-            <label>Will save to:</label>
-            <span style={{ fontSize: 12, color: '#555', fontFamily: 'monospace' }}>{derivedPath}</span>
+      {/* New file dialog */}
+      {newDialog && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 4, width: 500, padding: 20 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>New Solution File</h3>
+            <form onSubmit={handleNewFile}>
+              <div className="form-row">
+                <label>File name:</label>
+                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="solution.cpp" autoFocus style={{ flex: 1 }} />
+              </div>
+              <div className="form-row">
+                <label>Language:</label>
+                <select value={newLang} onChange={e => setNewLang(e.target.value)} style={{ flex: 1 }}>
+                  {LANGUAGE_OPTIONS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label>Type:</label>
+                <select value={newTag} onChange={e => setNewTag(e.target.value)} style={{ flex: 1 }}>
+                  {TAG_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="form-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <label style={{ marginBottom: 4 }}>Content:</label>
+                <textarea
+                  value={newContent}
+                  onChange={e => setNewContent(e.target.value)}
+                  style={{ fontFamily: 'monospace', fontSize: 12, minHeight: 200, resize: 'vertical' }}
+                  placeholder="Paste source code here…"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                <button type="submit" className="btn btn-primary" disabled={newSaving}>{newSaving ? 'Saving…' : 'Create'}</button>
+                <button type="button" className="btn" onClick={() => setNewDialog(false)}>Cancel</button>
+              </div>
+            </form>
           </div>
-        )}
-        <div className="form-row">
-          <label>Source type:</label>
-          <select value={newSol.sourceType} onChange={e => setNewSol(s => ({ ...s, sourceType: e.target.value }))}>
-            <option value="cpp.g++17">cpp.g++17</option>
-            <option value="cpp.g++20">cpp.g++20</option>
-            <option value="cpp.gcc14-64-msys2-g++23">cpp.gcc14-64-msys2-g++23</option>
-          </select>
         </div>
-        <div className="form-row">
-          <label>Tag:</label>
-          <select value={newSol.tag} onChange={e => setNewSol(s => ({ ...s, tag: e.target.value }))}>
-            {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-          <label style={{ marginBottom: 4 }}>Content (paste or upload above):</label>
-          <textarea
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            style={{ width: '100%', minHeight: 120, fontFamily: 'monospace', fontSize: 11 }}
-            placeholder="Paste source code here, or upload a file above"
-          />
-        </div>
-        <div className="form-actions">
-          <button type="submit" className="btn btn-primary">Save Solution</button>
-        </div>
-      </form>
+      )}
     </div>
   );
 }

@@ -101,6 +101,10 @@ table.poly-table tr:hover td { background: #eef; }
 .btn-danger:hover { background: #a22; }
 .btn-sm { padding: 2px 6px; font-size: 11px; }
 
+/* Inline link style matching Polygon */
+.poly-link { color: #00c; text-decoration: none; }
+.poly-link:hover { text-decoration: underline; cursor: pointer; }
+
 /* Forms */
 .form-row {
   margin-bottom: 8px;

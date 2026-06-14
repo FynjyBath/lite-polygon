@@ -28,6 +28,21 @@ function getCompileCommand(sourceType: string): { compiler: string; flags: strin
     else if (lower.includes('g++23') || lower.includes('c++23')) std = '-std=c++23';
     return { compiler: 'g++', flags: ['-O2', std, ...CPP_FLAGS_BASE.slice(1)] };
   }
+  if (lower.includes('java')) {
+    return { compiler: 'javac', flags: [] };
+  }
+  return null;
+}
+
+export function isInterpretedLanguage(sourceType: string): boolean {
+  const lower = sourceType.toLowerCase();
+  return lower.includes('python') || lower.includes('pypy');
+}
+
+export function getInterpreterCommand(sourceType: string): string | null {
+  const lower = sourceType.toLowerCase();
+  if (lower.includes('pypy')) return 'pypy3';
+  if (lower.includes('python')) return 'python3';
   return null;
 }
 

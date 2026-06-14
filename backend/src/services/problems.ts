@@ -245,6 +245,10 @@ export function upsertSolution(problemId: number, sourcePath: string, data: Part
   }
 }
 
+export function deleteSolution(id: number): void {
+  db.prepare('DELETE FROM solutions WHERE id = ?').run(id);
+}
+
 export function getAsset(problemId: number, assetType: string): Asset | undefined {
   return db.prepare('SELECT * FROM assets WHERE problem_id = ? AND asset_type = ?').get(problemId, assetType) as Asset | undefined;
 }

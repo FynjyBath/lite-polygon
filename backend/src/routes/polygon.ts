@@ -327,6 +327,26 @@ async function pushToPolygon(
     for (const g of groups) groupPolicyMap[g.name] = g.points_policy;
 
     const tests = listTests(testset.id);
+
+    // Two-pass test upload to avoid "Test coincides with test #X" errors.
+    // Polygon checks for duplicate content across all tests. If the existing
+    // Polygon tests have rotated/wrong content (from a previous partial push),
+    // direct overwrite triggers coincidence errors. Solution:
+    //   Pass 1 — replace every test slot with a unique placeholder string.
+    //            Placeholders are unique so no coincidence fires. This breaks
+    //            any coincidence cycles.
+    //   Pass 2 — overwrite with real content. After pass 1 all other slots
+    //            hold unique placeholders, so real content never coincides.
+    await tryStep('Prepare test slots', async () => {
+      for (const test of tests) {
+        if (test.method === 'generated') continue;
+        await polygonPost('problem.saveTest', {
+          problemId: pid, testset: 'tests', testIndex: String(test.idx),
+          testInput: `__placeholder_${test.idx}__`,
+        }, key, secret);
+      }
+    });
+
     for (const test of tests) {
       if (test.method === 'generated') {
         errors.push(`Test ${test.idx}: generated tests must be set up via scripts on Polygon`);
@@ -340,7 +360,7 @@ async function pushToPolygon(
       await tryStep(`Test ${test.idx}`, async () => {
         const testParams: Record<string, string> = {
           problemId: pid, testset: 'tests', testIndex: String(test.idx),
-          testInput: input, checkExisting: 'true',
+          testInput: input,
         };
         if (groupsEnabled && test.group_name) testParams.testGroup = String(test.group_name);
         if (test.description) testParams.description = String(test.description);
