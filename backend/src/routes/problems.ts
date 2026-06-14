@@ -43,8 +43,8 @@ function fail(comment: string, code = 400) {
   return { _code: code, status: 'FAILED', comment };
 }
 
-function getProblemForUser(problemId: number, userId: number, reply: FastifyReply) {
-  const problem = getProblem(problemId, userId);
+function getProblemForUser(problemId: number, user: { id: number; username: string }, reply: FastifyReply) {
+  const problem = user.username === 'admin' ? getProblem(problemId) : getProblem(problemId, user.id);
   if (!problem) {
     reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
     return null;
@@ -94,7 +94,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.body as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
     deleteProblem(id);
     if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
@@ -107,7 +107,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     const names = getProblemNames(id);
     const tags = listTags(id);
@@ -151,7 +151,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     const updates: Record<string, unknown> = {};
     if (body.timeLimit) updates.time_limit = parseInt(body.timeLimit);
@@ -174,7 +174,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     return ok(listStatements(id));
   });
@@ -185,7 +185,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id || !body.lang) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and lang required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     upsertStatement(id, body.lang, {
       name: body.name ?? '',
@@ -221,7 +221,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, lang } = req.query as { problemId?: string; lang?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     const stmt = getStatement(id, lang ?? 'russian') as Record<string, string> | null;
     if (!stmt) return ok({ html: '', tutorialHtml: '' });
@@ -237,7 +237,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const files = listFiles(id);
     const execs = listExecutables(id);
     return ok({ resources: files.filter(f => f.file_role === 'resource'), executables: execs });
@@ -250,7 +250,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, unknown>;
     const id = parseInt(String(body.problemId ?? ''));
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     const filePath = String(body.path ?? '');
     const sourceType = String(body.sourceType ?? '');
@@ -274,7 +274,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, path: filePath } = req.query as { problemId?: string; path?: string };
     const id = parseInt(problemId ?? '');
     if (!id || !filePath) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and path required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
     const dest = path.join(problemDir, filePath);
     if (!dest.startsWith(problemDir) || !fs.existsSync(dest)) {
@@ -291,7 +291,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
     const solutions = listSolutions(id).map(s => {
       const filePath = path.join(problemDir, s.source_path);
@@ -308,7 +308,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id || !body.sourcePath) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and sourcePath required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
 
     const problemDir = getProblemDir(id);
     const dest = path.join(problemDir, body.sourcePath);
@@ -332,7 +332,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     const solId = parseInt(solutionId ?? '');
     if (!id || !solId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and solutionId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     const problemDir = getProblemDir(id);
@@ -349,7 +349,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok(getAsset(id, 'checker'));
   });
 
@@ -359,7 +359,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     upsertAsset(id, 'checker', {
       name: body.name ?? '',
       checker_type: body.type ?? 'testlib',
@@ -379,7 +379,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok(getAsset(id, 'validator'));
   });
 
@@ -389,7 +389,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     upsertAsset(id, 'validator', {
       source_path: body.sourcePath ?? '',
       source_type: body.sourceType ?? '',
@@ -404,7 +404,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok(getAsset(id, 'interactor'));
   });
 
@@ -414,7 +414,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     upsertAsset(id, 'interactor', {
       source_path: body.sourcePath ?? '',
       source_type: body.sourceType ?? '',
@@ -429,7 +429,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, testset: tsName } = req.query as { problemId?: string; testset?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, tsName ?? 'tests');
     if (!testset) return ok([]);
     const tests = listTests(testset.id);
@@ -451,7 +451,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
 
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
@@ -486,7 +486,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const idx = parseInt(body.testIndex ?? '');
     if (!id || !idx) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and testIndex required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, body.testset ?? 'tests');
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
 
@@ -523,7 +523,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const testIndex = parseInt(body.testIndex ?? '');
     if (!id || !testIndex) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and testIndex required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     const updates: Record<string, unknown> = {};
     if (body.sample !== undefined) updates.sample = body.sample === 'true' ? 1 : 0;
@@ -544,7 +544,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const testIndex = parseInt(body.testIndex ?? '');
     const direction = body.direction ?? 'up';
     if (!id || !testIndex) return reply.code(400).send({ status: 'FAILED', comment: 'required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     const otherIndex = direction === 'up' ? testIndex - 1 : testIndex + 1;
     const tests = listTests(testset.id);
@@ -580,7 +580,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     const idx = parseInt(testIndex ?? '');
     if (!id || !idx) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and testIndex required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, tsName ?? 'tests');
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
     const testNum = String(idx).padStart(2, '0');
@@ -597,7 +597,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     const idx = parseInt(testIndex ?? '');
     if (!id || !idx) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and testIndex required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, tsName ?? 'tests');
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
     const testNum = String(idx).padStart(2, '0');
@@ -614,7 +614,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const tsName = body.testset ?? 'tests';
     const testset = getTestset(id, tsName);
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
@@ -644,7 +644,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const idx = parseInt(body.testIndex ?? '');
     if (!id || !idx) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and testIndex required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, body.testset ?? 'tests');
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
     upsertTest(testset.id, idx, { group_name: body.group ?? '' });
@@ -658,7 +658,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     const enabled = body.enable !== 'false' ? 1 : 0;
     db.prepare('UPDATE testsets SET groups_enabled = ? WHERE id = ?').run(enabled, testset.id);
@@ -672,7 +672,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     const enabled = body.enable !== 'false' ? 1 : 0;
     db.prepare('UPDATE testsets SET points_enabled = ? WHERE id = ?').run(enabled, testset.id);
@@ -686,7 +686,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     const enabled = body.enable !== 'false' ? 1 : 0;
     db.prepare('UPDATE testsets SET treat_points_from_checker_as_percent = ? WHERE id = ?').run(enabled, testset.id);
@@ -700,7 +700,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, testset: tsName } = req.query as { problemId?: string; testset?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, tsName ?? 'tests');
     if (!testset) return ok([]);
     const groups = getTestGroups(testset.id);
@@ -716,7 +716,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id || !body.groupName) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and groupName required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     upsertTestGroup(testset.id, body.groupName, {
       points: parseFloat(body.points ?? '0') || 0,
@@ -734,7 +734,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok(listCheckerTests(id));
   });
 
@@ -744,7 +744,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const tests = listCheckerTests(id);
     const idx = parseInt(body.testIndex ?? '0') || (tests.length + 1);
     upsertCheckerTest(id, idx, {
@@ -763,7 +763,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok(listValidatorTests(id));
   });
 
@@ -773,7 +773,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const tests = listValidatorTests(id);
     const idx = parseInt(body.testIndex ?? '0') || (tests.length + 1);
     upsertValidatorTest(id, 0, idx, {
@@ -792,7 +792,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok(listTags(id));
   });
 
@@ -802,7 +802,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as { problemId?: string; tags?: string | string[] };
     const id = parseInt(String(body.problemId ?? ''));
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const tags = Array.isArray(body.tags) ? body.tags : (body.tags ?? '').split(',').map(t => t.trim()).filter(Boolean);
     setTags(id, tags);
     updateProblem(id, { modified: 1 });
@@ -815,7 +815,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     return ok(problem.general_description);
   });
@@ -826,7 +826,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as { problemId?: string; description?: string };
     const id = parseInt(String(body.problemId ?? ''));
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     updateProblem(id, { general_description: body.description ?? '', modified: 1 });
     return ok(null);
   });
@@ -837,7 +837,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     return ok(problem.general_tutorial);
   });
@@ -848,7 +848,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as { problemId?: string; tutorial?: string };
     const id = parseInt(String(body.problemId ?? ''));
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     updateProblem(id, { general_tutorial: body.tutorial ?? '', modified: 1 });
     return ok(null);
   });
@@ -859,7 +859,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     return ok({ cautions: getCautions(id), aiTips: [] });
   });
 
@@ -869,7 +869,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const packages = db.prepare('SELECT * FROM packages WHERE problem_id = ? ORDER BY created_at DESC').all(id);
     return ok(packages);
   });
@@ -880,7 +880,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     const type = (body.type ?? 'standard') as 'standard' | 'linux' | 'windows';
     const comment = body.comment ?? '';
@@ -905,7 +905,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     const pkgId = parseInt(packageId ?? '');
     if (!id || !pkgId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and packageId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const pkg = db.prepare('SELECT * FROM packages WHERE id = ? AND problem_id = ?').get(pkgId, id) as { state: string; file_path: string; type: string } | undefined;
     if (!pkg) return reply.code(404).send({ status: 'FAILED', comment: 'Package not found' });
     if (pkg.state !== 'READY') return reply.code(400).send({ status: 'FAILED', comment: `Package state: ${pkg.state}` });
@@ -923,7 +923,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const solId = parseInt(body.solutionId ?? '');
     if (!id || !solId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and solutionId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     // Tags are stored in the tag field; extra tags not separately modeled
@@ -938,7 +938,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const solId = parseInt(body.solutionId ?? '');
     if (!id || !solId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and solutionId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     const filePath = path.join(getProblemDir(id), solution.source_path);
@@ -955,7 +955,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     const solId = parseInt(solutionId ?? '');
     if (!id || !solId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and solutionId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     const filePath = path.join(getProblemDir(id), solution.source_path);
@@ -974,7 +974,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const solId = parseInt(body.solutionId ?? '');
     const newName = (body.newName ?? '').trim();
     if (!id || !solId || !newName) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and newName required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     const problemDir = getProblemDir(id);
@@ -998,7 +998,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const solId = parseInt(body.solutionId ?? '');
     if (!id || !solId || !body.sourceType) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and sourceType required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     db.prepare('UPDATE solutions SET source_type = ? WHERE id = ?').run(body.sourceType, solId);
@@ -1013,7 +1013,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const solId = parseInt(body.solutionId ?? '');
     if (!id || !solId || !body.tag) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and tag required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     db.prepare('UPDATE solutions SET tag = ? WHERE id = ?').run(body.tag, solId);
@@ -1028,7 +1028,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(body.problemId ?? '');
     const solId = parseInt(body.solutionId ?? '');
     if (!id || !solId || body.content === undefined) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and content required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     const filePath = path.join(getProblemDir(id), solution.source_path);
@@ -1044,7 +1044,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, type } = req.query as { problemId?: string; type?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const scriptName = type === 'windows' ? 'doall.bat' : 'doall.sh';
     const scriptPath = path.join(getProblemDir(id), scriptName);
     if (!fs.existsSync(scriptPath)) {
@@ -1061,7 +1061,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const scriptName = body.type === 'windows' ? 'doall.bat' : 'doall.sh';
     const scriptPath = path.join(getProblemDir(id), scriptName);
     fs.writeFileSync(scriptPath, body.content ?? '', 'utf-8');
@@ -1075,7 +1075,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const scriptName = body.type === 'windows' ? 'doall.bat' : 'doall.sh';
     const scriptPath = path.join(getProblemDir(id), scriptName);
     if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
@@ -1089,7 +1089,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, testset: tsName } = req.query as { problemId?: string; testset?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, tsName ?? 'tests');
     if (!testset) return ok([]);
     const tests = listTests(testset.id);
@@ -1133,7 +1133,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     updateProblem(id, { revision: problem.revision + 1, modified: 1 });
     return ok(null);
@@ -1145,7 +1145,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     updateProblem(id, { modified: 0 });
     return ok(null);
   });
@@ -1156,7 +1156,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     updateProblem(id, { modified: 0 });
     return ok(null);
   });
@@ -1167,7 +1167,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const invocations = db.prepare('SELECT * FROM invocations WHERE problem_id = ? ORDER BY created_at DESC').all(id);
     return ok(invocations);
   });
@@ -1177,7 +1177,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
 
     const solutionIds = (body.solutionIds ?? '').split(',').map(Number).filter(Boolean);
     const testsetName = body.testset ?? 'tests';
@@ -1206,7 +1206,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(problemId ?? '');
     const invId = parseInt(invocationId ?? '');
     if (!id || !invId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and invocationId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const invocation = db.prepare('SELECT * FROM invocations WHERE id = ? AND problem_id = ?').get(invId, id) as { state: string } | undefined;
     if (!invocation) return reply.code(404).send({ status: 'FAILED', comment: 'Invocation not found' });
     const runs = db.prepare('SELECT * FROM invocation_runs WHERE invocation_id = ? ORDER BY solution_id, test_idx').all(invId);
@@ -1247,7 +1247,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const stresses = db.prepare('SELECT * FROM stresses WHERE problem_id = ?').all(id);
     return ok(stresses);
   });
@@ -1258,7 +1258,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const result = db.prepare(
       'INSERT INTO stresses (problem_id, generator_cmd, solution_path, name) VALUES (?, ?, ?, ?)'
     ).run(id, body.generatorCmd ?? '', body.solutionPath ?? '', body.name ?? '');
@@ -1278,7 +1278,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     // Return empty for now - TODO: support multiple validators
     return ok([]);
   });
@@ -1289,7 +1289,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, lang } = req.query as { problemId?: string; lang?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
     const stmtDir = path.join(problemDir, 'statements', lang ?? 'russian');
     const resources: string[] = [];
@@ -1307,7 +1307,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, lang, name } = req.query as { problemId?: string; lang?: string; name?: string };
     const id = parseInt(problemId ?? '');
     if (!id || !name) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and name required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
     const filePath = path.join(problemDir, 'statements', lang ?? 'russian', name);
     if (!filePath.startsWith(problemDir) || !fs.existsSync(filePath)) {
@@ -1328,7 +1328,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const id = parseInt(fields?.problemId?.value ?? '');
     const lang = fields?.lang?.value ?? 'russian';
     if (!id || !data) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required and file needed' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
     const stmtDir = path.join(problemDir, 'statements', lang);
     fs.mkdirSync(stmtDir, { recursive: true });
@@ -1348,7 +1348,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!/^[a-zA-Z0-9_\-\.]+$/.test(newName)) {
       return reply.code(400).send({ status: 'FAILED', comment: 'Invalid name; only letters, digits, _, -, . allowed' });
     }
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const existing = getProblemByName(newName, user.id);
     if (existing && existing.id !== id) {
       return reply.code(409).send({ status: 'FAILED', comment: 'A problem with that name already exists' });
@@ -1363,7 +1363,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, lang } = req.body as { problemId?: string | number; lang?: string };
     const id = parseInt(String(problemId ?? ''));
     if (!id || !lang) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and lang required' });
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     db.prepare('DELETE FROM statements WHERE problem_id = ? AND language = ?').run(id, lang);
     const problemDir = getProblemDir(id);
     const sectionsDir = path.join(problemDir, 'statement-sections', lang);
@@ -1385,7 +1385,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!id || targetIdx === undefined || !Array.isArray(testIndices) || !testIndices.length) {
       return reply.code(400).send({ status: 'FAILED', comment: 'problemId, testIndices and targetIdx required' });
     }
-    if (!getProblemForUser(id, user.id, reply)) return;
+    if (!getProblemForUser(id, user, reply)) return;
     const ts = getTestset(id, testset ?? 'tests');
     if (!ts) return reply.code(400).send({ status: 'FAILED', comment: 'Testset not found' });
 
@@ -1439,7 +1439,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId } = req.query as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblemForUser(id, user.id, reply);
+    const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
 
     const errors: string[] = [];
