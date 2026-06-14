@@ -185,6 +185,7 @@ export interface ProblemSummary {
   interactive: boolean;
   modified: boolean;
   updatedAt: string;
+  ownerUsername?: string;
 }
 
 export interface ProblemInfo extends ProblemSummary {

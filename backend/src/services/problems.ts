@@ -79,6 +79,12 @@ export function listProblems(ownerId: number): Problem[] {
   return db.prepare('SELECT * FROM problems WHERE owner_id = ? ORDER BY updated_at DESC').all(ownerId) as Problem[];
 }
 
+export function listAllProblems(): (Problem & { owner_username: string })[] {
+  return db.prepare(
+    'SELECT p.*, u.username AS owner_username FROM problems p JOIN users u ON u.id = p.owner_id ORDER BY p.updated_at DESC'
+  ).all() as (Problem & { owner_username: string })[];
+}
+
 export function getProblem(id: number, ownerId?: number): Problem | undefined {
   if (ownerId !== undefined) {
     return db.prepare('SELECT * FROM problems WHERE id = ? AND owner_id = ?').get(id, ownerId) as Problem | undefined;

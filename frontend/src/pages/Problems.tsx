@@ -246,6 +246,7 @@ export default function ProblemsPage() {
             <tr>
               <th>#</th>
               <th>Short Name</th>
+              {list[0]?.ownerUsername !== undefined && <th>Owner</th>}
               <th>Rev</th>
               <th>TL (ms)</th>
               <th>ML</th>
@@ -260,6 +261,7 @@ export default function ProblemsPage() {
               <tr key={p.id}>
                 <td>{p.id}</td>
                 <td><Link to={`/problem/${p.id}`}>{p.shortName}</Link></td>
+                {p.ownerUsername !== undefined && <td style={{ color: '#555', fontSize: 12 }}>{p.ownerUsername}</td>}
                 <td>{p.revision}</td>
                 <td>{p.timeLimit}</td>
                 <td>{formatMemory(p.memoryLimit)}</td>

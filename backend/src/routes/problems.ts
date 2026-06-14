@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getAuthUser } from './auth';
 import {
-  listProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem,
+  listProblems, listAllProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem,
   listSolutions, getSolution, getSolutionByPath, upsertSolution,
   getAsset, upsertAsset, listFiles, upsertFile,
   getTestset, getOrCreateTestset, listTests, getTest, upsertTest, deleteTest as deleteTestDb,
@@ -57,7 +57,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
   // problems.list
   app.get('/api/problems.list', async (req, reply) => {
     const user = await auth(req, reply);
-    const problems = listProblems(user.id);
+    const isAdmin = user.username === 'admin';
+    const problems = isAdmin ? listAllProblems() : listProblems(user.id);
     return ok(problems.map(p => ({
       id: p.id,
       shortName: p.short_name,
@@ -69,6 +70,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       interactive: p.interactive === 1,
       modified: p.modified === 1,
       updatedAt: p.updated_at,
+      ...(isAdmin ? { ownerUsername: (p as unknown as { owner_username: string }).owner_username } : {}),
     })));
   });
 
