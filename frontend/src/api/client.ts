@@ -145,6 +145,9 @@ export const problems = {
   commitChanges: (problemId: number) => post<null>('problem.commitChanges', { problemId }),
   rename: (problemId: number, newName: string) => post<null>('problem.rename', { problemId, newName }),
   deleteStatement: (problemId: number, lang: string) => post<null>('problem.deleteStatement', { problemId, lang }),
+  moveTestsTo: (problemId: number, testIndices: number[], targetIdx: number, testset?: string) =>
+    post<{ count: number }>('problem.moveTestsTo', { problemId, testIndices, targetIdx, testset }),
+  validate: (problemId: number) => get<{ errors: string[]; warnings: string[] }>('problem.validate', { problemId }),
   statementResources: (problemId: number, lang: string) =>
     get<string[]>('problem.statementResources', { problemId, lang }),
   saveStatementResource: (problemId: number, lang: string, file: File): Promise<{ name: string }> => {
@@ -154,6 +157,20 @@ export const problems = {
     form.append('file', file);
     return postForm<{ name: string }>('problem.saveStatementResource', form);
   },
+};
+
+export const polygon = {
+  savedKey: () => get<{ hasKey: boolean; apiKey: string | null }>('polygon.savedKey'),
+  saveKey: (apiKey: string, apiSecret: string) => post<null>('polygon.saveKey', { apiKey, apiSecret }),
+  clearKey: () => post<null>('polygon.clearKey'),
+  importProblem: (polygonProblemId: number, apiKey: string, apiSecret: string, remember: boolean) =>
+    post<{ shortName: string; filesImported: number; testsImported: number; warnings: string[]; polygonProblemId: number; packageRevision: number }>('polygon.importProblem', { polygonProblemId, apiKey, apiSecret, remember }),
+  pushProblem: (problemId: number, apiKey: string, apiSecret: string, remember: boolean) =>
+    post<{ polygonProblemId: number; done: string[]; errors: string[] }>('polygon.pushProblem', { problemId, apiKey, apiSecret, remember }),
+  createProblem: (localProblemId: number, name: string, apiKey: string, apiSecret: string, remember: boolean, pushAfter: boolean) =>
+    post<{ polygonProblemId: number; polygonName: string; push: { done: string[]; errors: string[] } | null }>('polygon.createProblem', { localProblemId, name, apiKey, apiSecret, remember, pushAfter }),
+  linkProblem: (problemId: number, polygonProblemId: number) =>
+    post<{ polygonProblemId: number }>('polygon.linkProblem', { problemId, polygonProblemId }),
 };
 
 // Types
@@ -176,6 +193,7 @@ export interface ProblemInfo extends ProblemSummary {
   cpuSpeed: string;
   generalDescription: string;
   generalTutorial: string;
+  polygonProblemId: number | null;
   names: { language: string; value: string }[];
   tags: string[];
   checker: { sourcePath: string; sourceType: string; name: string } | null;

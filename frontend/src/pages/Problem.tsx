@@ -16,6 +16,7 @@ import StressesTab from './Problem/StressesTab';
 import PackagesTab from './Problem/PackagesTab';
 import TagsTab from './Problem/TagsTab';
 import ReviewTab from './Problem/ReviewTab';
+import PolygonTab from './Problem/PolygonTab';
 
 const TABS = [
   { key: 'general', label: 'General Info', path: 'general' },
@@ -31,6 +32,7 @@ const TABS = [
   { key: 'packages', label: 'Packages', path: 'packages' },
   { key: 'tags', label: 'Tags', path: 'tags' },
   { key: 'review', label: 'Review', path: 'review' },
+  { key: 'polygon', label: 'Polygon', path: 'polygon' },
 ];
 
 export default function ProblemPage() {
@@ -102,11 +104,12 @@ export default function ProblemPage() {
             <Route path="interactor" element={<InteractorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
             <Route path="tests" element={<TestsTab problemId={problemId} info={info} />} />
             <Route path="solutions" element={<SolutionsTab problemId={problemId} />} />
-            <Route path="invocations" element={<InvocationsTab problemId={problemId} testsCount={info.testsCount} solutionsCount={info.solutionsCount} />} />
+            <Route path="invocations" element={<InvocationsTab problemId={problemId} testsCount={info.testsCount} solutionsCount={info.solutionsCount} timeLimit={info.timeLimit} />} />
             <Route path="stresses" element={<StressesTab problemId={problemId} />} />
             <Route path="packages" element={<PackagesTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
             <Route path="tags" element={<TagsTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
             <Route path="review" element={<ReviewTab problemId={problemId} />} />
+            <Route path="polygon" element={<PolygonTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
           </Routes>
         </div>
 
