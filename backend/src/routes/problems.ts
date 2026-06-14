@@ -586,9 +586,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const testNum = String(idx).padStart(2, '0');
     const inputPath = path.join(getProblemDir(id), testset.input_path_pattern.replace('%02d', testNum));
     if (!fs.existsSync(inputPath)) return reply.code(404).send({ status: 'FAILED', comment: 'Input not found' });
-    const content = fs.readFileSync(inputPath);
     reply.header('Content-Type', 'text/plain; charset=utf-8');
-    return reply.send(content);
+    return reply.send(fs.createReadStream(inputPath));
   });
 
   // problem.testAnswer
@@ -604,9 +603,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const testNum = String(idx).padStart(2, '0');
     const answerPath = path.join(getProblemDir(id), testset.answer_path_pattern.replace('%02d', testNum));
     if (!fs.existsSync(answerPath)) return reply.code(404).send({ status: 'FAILED', comment: 'Answer not found' });
-    const content = fs.readFileSync(answerPath);
     reply.header('Content-Type', 'text/plain; charset=utf-8');
-    return reply.send(content);
+    return reply.send(fs.createReadStream(answerPath));
   });
 
   // problem.generateAnswers — compile main solution, run on every test, write .a files
@@ -1105,9 +1103,14 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       let answerSize = 0;
       if (fs.existsSync(inputPath)) {
         try {
-          const data = fs.readFileSync(inputPath);
-          inputSize = data.length;
-          inputPreview = data.toString('utf-8').slice(0, 200);
+          inputSize = fs.statSync(inputPath).size;
+          // Read only first 200 bytes for preview — never load entire file
+          const PREVIEW_BYTES = 200;
+          const buf = Buffer.allocUnsafe(PREVIEW_BYTES);
+          const fd = fs.openSync(inputPath, 'r');
+          const bytesRead = fs.readSync(fd, buf, 0, PREVIEW_BYTES, 0);
+          fs.closeSync(fd);
+          inputPreview = buf.slice(0, bytesRead).toString('utf-8');
         } catch { /**/ }
       }
       if (fs.existsSync(answerPath)) {
