@@ -51,29 +51,34 @@ async function polygonPost(method: string, params: Record<string, string>, key: 
   return json.result;
 }
 
-// Download a package as binary buffer
-async function downloadPolygonPackage(pgProblemId: number, packageId: number, key: string, secret: string): Promise<Buffer> {
-  const time = String(Math.floor(Date.now() / 1000));
-  const params: Record<string, string> = {
-    problemId: String(pgProblemId),
-    packageId: String(packageId),
-    type: 'linux',
-    apiKey: key,
-    time,
-  };
-  const sig = computeApiSig('package', params, secret);
-  const qs = new URLSearchParams({ ...params, apiSig: sig }).toString();
-  const res = await fetch(`${POLYGON_BASE}/package?${qs}`);
-  // Check if we got JSON error vs binary
-  const ct = res.headers.get('content-type') ?? '';
-  if (ct.includes('application/json') || ct.includes('text/plain')) {
-    const text = await res.text();
-    let msg = `Package download failed (HTTP ${res.status})`;
-    try { const j = JSON.parse(text); msg = j.comment ?? msg; } catch { msg = text.slice(0, 200) || msg; }
-    throw new Error(msg);
+// Download a package as binary buffer; pkgType should match what Polygon built ('linux' or 'windows')
+async function downloadPolygonPackage(pgProblemId: number, packageId: number, pkgType: string, key: string, secret: string): Promise<Buffer> {
+  // Try the given type first, then fall back to the other type
+  const types = pkgType === 'linux' ? ['linux', 'windows'] : [pkgType, 'linux'];
+  let lastError = '';
+  for (const type of types) {
+    const time = String(Math.floor(Date.now() / 1000));
+    const params: Record<string, string> = {
+      problemId: String(pgProblemId),
+      packageId: String(packageId),
+      type,
+      apiKey: key,
+      time,
+    };
+    const sig = computeApiSig('package', params, secret);
+    const qs = new URLSearchParams({ ...params, apiSig: sig }).toString();
+    const res = await fetch(`${POLYGON_BASE}/package?${qs}`);
+    const ct = res.headers.get('content-type') ?? '';
+    if (ct.includes('application/json') || ct.includes('text/plain')) {
+      const text = await res.text();
+      try { const j = JSON.parse(text); lastError = j.comment ?? `HTTP ${res.status}`; }
+      catch { lastError = text.slice(0, 200) || `HTTP ${res.status}`; }
+      continue; // try next type
+    }
+    if (!res.ok) { lastError = `HTTP ${res.status}`; continue; }
+    return Buffer.from(await res.arrayBuffer());
   }
-  if (!res.ok) throw new Error(`Package download failed: HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  throw new Error(`Package download failed: ${lastError}`);
 }
 
 // Get the user's saved Polygon API key/secret from DB
@@ -329,23 +334,25 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ status: 'FAILED', comment: `Failed to fetch packages: ${(e as Error).message}` });
     }
 
+    // Prefer linux packages; fall back to any READY package
     const readyPkgs = packages.filter(p => p.state === 'READY').sort((a, b) => b.id - a.id);
     if (!readyPkgs.length) {
       return reply.code(400).send({
         status: 'FAILED',
-        comment: 'No READY packages found. Please build a "Full package (Linux)" on Polygon first.',
+        comment: 'No READY packages found. Please build a package on Polygon first.',
       });
     }
-    const pkg = readyPkgs[0];
+    const pkg = readyPkgs.find(p => p.type === 'linux') ?? readyPkgs[0];
 
     const tmpPath = `/tmp/polygon_pkg_${Date.now()}_${pgId}.zip`;
     try {
-      const buf = await downloadPolygonPackage(pgId, pkg.id, key, secret);
+      const buf = await downloadPolygonPackage(pgId, pkg.id, pkg.type ?? 'linux', key, secret);
       fs.writeFileSync(tmpPath, buf);
       const result = await importPackage(tmpPath, user.id, true);
-      // Link the local problem to the Polygon problem ID
       db.prepare('UPDATE problems SET polygon_problem_id = ? WHERE id = ?').run(pgId, result.problemId);
       return ok({ ...result, polygonProblemId: pgId, packageId: pkg.id, packageRevision: pkg.revision });
+    } catch (e: unknown) {
+      return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
     } finally {
       if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
     }

@@ -36,6 +36,10 @@ async function request<T>(
   if (json.status === 'FAILED') {
     throw new ApiError(json.comment ?? 'Unknown error', res.status);
   }
+  if (!res.ok) {
+    // Fastify 500 errors: { statusCode, error, message }
+    throw new ApiError(json.message ?? json.error ?? `HTTP ${res.status}`, res.status);
+  }
   return json.result;
 }
 
