@@ -5,6 +5,7 @@ interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
 
 export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [savedSecret, setSavedSecret] = useState<string | null>(null);
   const [hasKey, setHasKey] = useState(false);
 
   // Shared key fields
@@ -33,6 +34,9 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
     polygon.savedKey().then(r => {
       setHasKey(r.hasKey);
       setSavedKey(r.apiKey);
+      setSavedSecret(r.apiSecret);
+      if (r.apiKey) setApiKey(r.apiKey);
+      if (r.apiSecret) setApiSecret(r.apiSecret);
     }).catch(() => {});
   }, []);
 
@@ -41,13 +45,13 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   function clearResult() { setMsg(''); setError(''); setPushResult(null); setCreateResult(null); }
 
   function effectiveKey() { return apiKey.trim() || savedKey || ''; }
-  function effectiveSecret() { return apiSecret.trim() || ''; }
+  function effectiveSecret() { return apiSecret.trim() || savedSecret || ''; }
 
   async function handleSaveKey() {
     if (!apiKey.trim() || !apiSecret.trim()) { setError('Enter both key and secret to save'); return; }
     try {
       await polygon.saveKey(apiKey.trim(), apiSecret.trim());
-      setHasKey(true); setSavedKey(apiKey.trim());
+      setHasKey(true); setSavedKey(apiKey.trim()); setSavedSecret(apiSecret.trim());
       setMsg('API key saved');
     } catch (e: unknown) { setError((e as Error).message); }
   }
@@ -55,7 +59,8 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   async function handleClearKey() {
     try {
       await polygon.clearKey();
-      setHasKey(false); setSavedKey(null);
+      setHasKey(false); setSavedKey(null); setSavedSecret(null);
+      setApiKey(''); setApiSecret('');
       setMsg('Saved key cleared');
     } catch (e: unknown) { setError((e as Error).message); }
   }
@@ -111,7 +116,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       <div className="section-header">API Credentials</div>
       {hasKey && (
         <div style={{ marginBottom: 8, padding: '6px 10px', background: '#f0f8f0', border: '1px solid #c0d8c0', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Saved key: <code>{savedKey}</code> — leave fields blank to use it automatically</span>
+          <span>Saved credentials loaded into fields below</span>
           <button className="btn btn-sm btn-danger" onClick={handleClearKey} style={{ fontSize: 11 }}>Clear</button>
         </div>
       )}
@@ -121,7 +126,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
           type="text"
           value={apiKey}
           onChange={e => setApiKey(e.target.value)}
-          placeholder={hasKey ? 'Using saved key (leave blank)' : 'Enter API key'}
+          placeholder="Enter API key"
           style={{ width: 320 }}
         />
       </div>
@@ -131,7 +136,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
           type="password"
           value={apiSecret}
           onChange={e => setApiSecret(e.target.value)}
-          placeholder={hasKey ? 'Enter secret to override saved' : 'Enter API secret'}
+          placeholder="Enter API secret"
           style={{ width: 320 }}
         />
       </div>

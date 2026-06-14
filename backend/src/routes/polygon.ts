@@ -277,7 +277,7 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/polygon.savedKey', async (req, reply) => {
     const user = await auth(req, reply);
     const saved = getSavedKey(user.id);
-    return ok({ hasKey: saved !== null, apiKey: saved?.apiKey ?? null });
+    return ok({ hasKey: saved !== null, apiKey: saved?.apiKey ?? null, apiSecret: saved?.apiSecret ?? null });
   });
 
   // polygon.saveKey - save API key+secret for the current user

@@ -160,7 +160,7 @@ export const problems = {
 };
 
 export const polygon = {
-  savedKey: () => get<{ hasKey: boolean; apiKey: string | null }>('polygon.savedKey'),
+  savedKey: () => get<{ hasKey: boolean; apiKey: string | null; apiSecret: string | null }>('polygon.savedKey'),
   saveKey: (apiKey: string, apiSecret: string) => post<null>('polygon.saveKey', { apiKey, apiSecret }),
   clearKey: () => post<null>('polygon.clearKey'),
   importProblem: (polygonProblemId: number, apiKey: string, apiSecret: string, remember: boolean) =>

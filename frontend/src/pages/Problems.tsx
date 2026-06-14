@@ -29,6 +29,8 @@ export default function ProblemsPage() {
     polygon.savedKey().then(r => {
       setHasSavedKey(r.hasKey);
       setSavedKey(r.apiKey);
+      if (r.apiKey) setPgKey(r.apiKey);
+      if (r.apiSecret) setPgSecret(r.apiSecret);
     }).catch(() => {});
   }, []);
 
@@ -103,7 +105,7 @@ export default function ProblemsPage() {
   async function handleClearKey() {
     try {
       await polygon.clearKey();
-      setHasSavedKey(false); setSavedKey(null);
+      setHasSavedKey(false); setSavedKey(null); setPgKey(''); setPgSecret('');
     } catch { /* ignore */ }
   }
 
@@ -205,7 +207,7 @@ export default function ProblemsPage() {
                   type="text"
                   value={pgKey}
                   onChange={e => setPgKey(e.target.value)}
-                  placeholder={hasSavedKey ? 'Using saved key' : 'API key'}
+                  placeholder="API key"
                   style={{ width: 200, fontSize: 12, padding: '2px 6px', border: '1px solid #aaa' }}
                 />
               </label>
