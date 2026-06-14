@@ -9,14 +9,14 @@ type Form = { name: string; legend: string; input: string; output: string; scori
 const EMPTY: Form = { name: '', legend: '', input: '', output: '', scoring: '', interaction: '', notes: '', tutorial: '' };
 const KNOWN_LANGS = ['russian', 'english', 'chinese'];
 
-const SECTIONS: { key: keyof Form; label: string; rows: number }[] = [
-  { key: 'legend',      label: 'Условие / Legend',           rows: 8 },
-  { key: 'input',       label: 'Входные данные / Input',     rows: 4 },
-  { key: 'output',      label: 'Выходные данные / Output',   rows: 4 },
-  { key: 'interaction', label: 'Interaction',                 rows: 3 },
-  { key: 'notes',       label: 'Примечания / Notes',         rows: 3 },
-  { key: 'scoring',     label: 'Scoring',                     rows: 3 },
-  { key: 'tutorial',    label: 'Tutorial / Разбор',          rows: 5 },
+const SECTIONS: { key: keyof Form; label: string; short: string }[] = [
+  { key: 'legend',      label: 'Условие / Legend',           short: 'Legend' },
+  { key: 'input',       label: 'Входные данные / Input',     short: 'Input' },
+  { key: 'output',      label: 'Выходные данные / Output',   short: 'Output' },
+  { key: 'interaction', label: 'Interaction',                 short: 'Interact' },
+  { key: 'notes',       label: 'Примечания / Notes',         short: 'Notes' },
+  { key: 'scoring',     label: 'Scoring',                     short: 'Scoring' },
+  { key: 'tutorial',    label: 'Tutorial / Разбор',          short: 'Tutorial' },
 ];
 
 function useDebounce<T>(value: T, ms: number): T {
@@ -28,8 +28,8 @@ function useDebounce<T>(value: T, ms: number): T {
   return dv;
 }
 
-function LaTeXEditor({ value, onChange, rows, placeholder }: {
-  value: string; onChange: (v: string) => void; rows: number; placeholder?: string
+function LaTeXEditor({ value, onChange, placeholder }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -39,9 +39,7 @@ function LaTeXEditor({ value, onChange, rows, placeholder }: {
       const { selectionStart: s, selectionEnd: end } = el;
       const next = el.value.slice(0, s) + '  ' + el.value.slice(end);
       onChange(next);
-      requestAnimationFrame(() => {
-        el.selectionStart = el.selectionEnd = s + 2;
-      });
+      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2; });
     }
   }
   return (
@@ -50,14 +48,14 @@ function LaTeXEditor({ value, onChange, rows, placeholder }: {
       value={value}
       onChange={e => onChange(e.target.value)}
       onKeyDown={onKeyDown}
-      rows={rows}
       placeholder={placeholder}
       style={{
-        width: '100%', fontFamily: '"Fira Code", "Courier New", monospace',
-        fontSize: 12, lineHeight: 1.5, resize: 'vertical',
-        border: '1px solid #ccc', borderRadius: 3, padding: '6px 8px',
-        background: '#1e1e2e', color: '#cdd6f4', outline: 'none',
-        boxSizing: 'border-box',
+        width: '100%', flex: 1,
+        fontFamily: '"Fira Code", "Consolas", "Courier New", monospace',
+        fontSize: 13, lineHeight: 1.6, resize: 'none',
+        border: '1px solid #d0d7de', borderRadius: 4, padding: '10px 12px',
+        background: '#fff', color: '#1f2328', outline: 'none',
+        boxSizing: 'border-box', display: 'block',
       }}
     />
   );
@@ -65,28 +63,34 @@ function LaTeXEditor({ value, onChange, rows, placeholder }: {
 
 function StatementPreview({ form, examples }: { form: Form; examples: string[][] }) {
   const html = useCallback((text: string) => latexToHtml(text), []);
+  const hasContent = Object.values(form).some(v => v.trim());
+  if (!hasContent) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999', fontSize: 13 }}>
+      Начните вводить текст — предпросмотр появится здесь
+    </div>
+  );
   return (
     <div className="stmt-preview">
       {form.name && <h1 className="stmt-title">{form.name}</h1>}
       {form.legend && (
-        <section>
-          <div dangerouslySetInnerHTML={{ __html: html(form.legend) }} />
+        <section className="stmt-section">
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.legend) }} />
         </section>
       )}
       {form.input && (
-        <section>
+        <section className="stmt-section">
           <h3 className="stmt-h3">Входные данные</h3>
-          <div dangerouslySetInnerHTML={{ __html: html(form.input) }} />
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.input) }} />
         </section>
       )}
       {form.output && (
-        <section>
+        <section className="stmt-section">
           <h3 className="stmt-h3">Выходные данные</h3>
-          <div dangerouslySetInnerHTML={{ __html: html(form.output) }} />
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.output) }} />
         </section>
       )}
       {examples.length > 0 && (
-        <section>
+        <section className="stmt-section">
           <h3 className="stmt-h3">Примеры</h3>
           {examples.map(([inp, out], i) => (
             <div key={i} className="stmt-example">
@@ -103,27 +107,27 @@ function StatementPreview({ form, examples }: { form: Form; examples: string[][]
         </section>
       )}
       {form.notes && (
-        <section>
+        <section className="stmt-section">
           <h3 className="stmt-h3">Примечания</h3>
-          <div dangerouslySetInnerHTML={{ __html: html(form.notes) }} />
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.notes) }} />
         </section>
       )}
       {form.interaction && (
-        <section>
+        <section className="stmt-section">
           <h3 className="stmt-h3">Interaction</h3>
-          <div dangerouslySetInnerHTML={{ __html: html(form.interaction) }} />
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.interaction) }} />
         </section>
       )}
       {form.scoring && (
-        <section>
+        <section className="stmt-section">
           <h3 className="stmt-h3">Scoring</h3>
-          <div dangerouslySetInnerHTML={{ __html: html(form.scoring) }} />
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.scoring) }} />
         </section>
       )}
       {form.tutorial && (
-        <section style={{ marginTop: 24, borderTop: '2px solid #e0e0e0', paddingTop: 16 }}>
-          <h3 className="stmt-h3" style={{ color: '#555' }}>Tutorial</h3>
-          <div dangerouslySetInnerHTML={{ __html: html(form.tutorial) }} />
+        <section className="stmt-section stmt-tutorial">
+          <h3 className="stmt-h3">Tutorial</h3>
+          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.tutorial) }} />
         </section>
       )}
     </div>
@@ -147,7 +151,7 @@ export default function StatementTab({ problemId }: Props) {
   const debouncedForm = useDebounce(form, 250);
 
   useEffect(() => { reload(); }, [problemId]);
-  useEffect(() => { if (lang) { reloadResources(); } }, [lang, problemId]);
+  useEffect(() => { if (lang) reloadResources(); }, [lang, problemId]);
   useEffect(() => { loadExamples(); }, [resources, lang, problemId]);
 
   function reload() {
@@ -171,8 +175,10 @@ export default function StatementTab({ problemId }: Props) {
       if (!resources.includes(inName) || !resources.includes(outName)) break;
       try {
         const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-        const inRes = await fetch(`${base}/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${inName}`, { credentials: 'include' });
-        const outRes = await fetch(`${base}/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${outName}`, { credentials: 'include' });
+        const [inRes, outRes] = await Promise.all([
+          fetch(`${base}/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${inName}`, { credentials: 'include' }),
+          fetch(`${base}/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${outName}`, { credentials: 'include' }),
+        ]);
         if (!inRes.ok || !outRes.ok) break;
         exList.push([await inRes.text(), await outRes.text()]);
         i++;
@@ -194,15 +200,13 @@ export default function StatementTab({ problemId }: Props) {
     else setForm(EMPTY);
   }
 
-  async function handleSave(e?: React.FormEvent) {
-    e?.preventDefault();
+  async function handleSave() {
     setMsg(''); setError('');
     try {
       await problems.saveStatement({ problemId, lang, name: form.name, legend: form.legend,
         input: form.input, output: form.output, scoring: form.scoring, interaction: form.interaction,
         notes: form.notes, tutorial: form.tutorial });
-      setMsg('Saved');
-      reload();
+      setMsg('Saved'); reload();
     } catch (err: unknown) { setError((err as Error).message); }
   }
 
@@ -221,7 +225,7 @@ export default function StatementTab({ problemId }: Props) {
 
   async function handleCreateLang() {
     const trimmed = newLangInput.trim().toLowerCase();
-    if (!trimmed) return;
+    if (!trimmed || trimmed === '__custom__') return;
     switchLang(trimmed);
     setNewLangInput(''); setShowAddLang(false);
   }
@@ -237,13 +241,11 @@ export default function StatementTab({ problemId }: Props) {
     finally { setUploadingResource(false); if (resourceInputRef.current) resourceInputRef.current.value = ''; }
   }
 
-  function set(field: keyof Form) {
-    return (v: string) => setForm(f => ({ ...f, [field]: v }));
-  }
+  const set = (field: keyof Form) => (v: string) => setForm(f => ({ ...f, [field]: v }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Top bar */}
+      {/* Top toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
         {stmts.map(s => (
           <button key={s.language} className={`btn btn-sm${s.language === lang ? ' btn-primary' : ''}`}
@@ -255,14 +257,15 @@ export default function StatementTab({ problemId }: Props) {
               <option value="">-- pick --</option>
               {KNOWN_LANGS.filter(l => !stmts.find(s => s.language === l)).map(l =>
                 <option key={l} value={l}>{l}</option>)}
-              <option value="__custom__">other...</option>
+              <option value="__custom__">other…</option>
             </select>
             {newLangInput === '__custom__' && (
               <input autoFocus placeholder="e.g. czech" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }}
                 onChange={e => setNewLangInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateLang()} />
             )}
-            <button className="btn btn-sm btn-primary" onClick={handleCreateLang} disabled={!newLangInput || newLangInput === '__custom__'}>Create</button>
+            <button className="btn btn-sm btn-primary" onClick={handleCreateLang}
+              disabled={!newLangInput || newLangInput === '__custom__'}>Create</button>
             <button className="btn btn-sm" onClick={() => { setShowAddLang(false); setNewLangInput(''); }}>✕</button>
           </span>
         ) : (
@@ -274,70 +277,75 @@ export default function StatementTab({ problemId }: Props) {
         {stmts.find(s => s.language === lang) && (
           <button className="btn btn-sm btn-danger" onClick={handleDeleteCurrent}>Delete</button>
         )}
-        <button className="btn btn-sm btn-primary" onClick={() => handleSave()}>Save</button>
+        <button className="btn btn-sm btn-primary" onClick={handleSave}>Save</button>
       </div>
 
-      {/* Split editor */}
-      <div style={{ display: 'flex', gap: 0, flex: 1, minHeight: 0, border: '1px solid #ddd', borderRadius: 4, overflow: 'hidden' }}>
+      {/* 50/50 split pane */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, border: '1px solid #d0d7de', borderRadius: 4, overflow: 'hidden' }}>
+
         {/* Left: editor */}
-        <div style={{ width: '42%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #ddd', background: '#1e1e2e', minHeight: 600 }}>
-          {/* Section tabs */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, borderBottom: '1px solid #333', background: '#181825' }}>
-            <div style={{ padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ color: '#a6adc8', fontSize: 11 }}>Name:</span>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                style={{ background: 'transparent', border: 'none', borderBottom: '1px solid #585b70', color: '#cdd6f4',
-                  fontFamily: 'monospace', fontSize: 12, outline: 'none', width: 200, padding: '1px 2px' }}
-                placeholder="Problem name…" />
-            </div>
-            <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #d0d7de', background: '#fff', minHeight: 600 }}>
+          {/* Name field */}
+          <div style={{ padding: '7px 12px', borderBottom: '1px solid #e8eaed', background: '#f6f8fa', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>Название:</span>
+            <input
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Название задачи…"
+              style={{ flex: 1, border: '1px solid #d0d7de', borderRadius: 4, padding: '3px 8px',
+                fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', color: '#1f2328' }}
+            />
           </div>
-          <div style={{ display: 'flex', borderBottom: '1px solid #333', background: '#181825', overflowX: 'auto' }}>
+
+          {/* Section tabs */}
+          <div style={{ display: 'flex', background: '#f6f8fa', borderBottom: '1px solid #e8eaed', overflowX: 'auto', flexShrink: 0 }}>
             {SECTIONS.map(s => (
-              <button key={s.key} onClick={() => setActiveSection(s.key)}
-                style={{ padding: '5px 10px', fontSize: 11, background: activeSection === s.key ? '#1e1e2e' : 'transparent',
-                  border: 'none', borderBottom: activeSection === s.key ? '2px solid #89b4fa' : '2px solid transparent',
-                  color: activeSection === s.key ? '#89b4fa' : '#6c7086', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {s.label.split(' / ')[0]}
+              <button key={s.key} onClick={() => setActiveSection(s.key)} style={{
+                padding: '6px 12px', fontSize: 12, background: 'transparent', border: 'none',
+                borderBottom: activeSection === s.key ? '2px solid #0969da' : '2px solid transparent',
+                color: activeSection === s.key ? '#0969da' : '#57606a',
+                fontWeight: activeSection === s.key ? 600 : 400,
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+              }}>
+                {s.short}
               </button>
             ))}
           </div>
-          {/* Active editor */}
-          <div style={{ flex: 1, padding: 8, overflow: 'auto' }}>
+
+          {/* Textarea area */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '10px 12px', overflow: 'hidden' }}>
             {SECTIONS.map(s => activeSection === s.key && (
-              <div key={s.key}>
-                <div style={{ color: '#6c7086', fontSize: 11, marginBottom: 4 }}>{s.label}</div>
-                <LaTeXEditor value={form[s.key]} onChange={set(s.key)} rows={s.rows}
-                  placeholder={`${s.label}…`} />
-                <div style={{ marginTop: 6, fontSize: 11, color: '#585b70', lineHeight: 1.6 }}>
-                  <code style={{ background: '#313244', padding: '1px 4px', borderRadius: 2, color: '#cba6f7' }}>$x$</code> inline &nbsp;
-                  <code style={{ background: '#313244', padding: '1px 4px', borderRadius: 2, color: '#cba6f7' }}>$$x$$</code> display &nbsp;
-                  <code style={{ background: '#313244', padding: '1px 4px', borderRadius: 2, color: '#a6e3a1' }}>\textbf{'{}'}</code>&nbsp;
-                  <code style={{ background: '#313244', padding: '1px 4px', borderRadius: 2, color: '#a6e3a1' }}>\textit{'{}'}</code>&nbsp;
-                  <code style={{ background: '#313244', padding: '1px 4px', borderRadius: 2, color: '#a6e3a1' }}>\texttt{'{}'}</code>&nbsp;
-                  Tab = 2 spaces
+              <React.Fragment key={s.key}>
+                <LaTeXEditor value={form[s.key]} onChange={set(s.key)} placeholder={`${s.label}…`} />
+                <div style={{ marginTop: 6, fontSize: 11, color: '#8c959f', lineHeight: 1.8, flexShrink: 0 }}>
+                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$x$</code>{' '}инлайн{'  '}
+                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$$x$$</code>{' '}блок{'  '}
+                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\textbf{'{}'}</code>{'  '}
+                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\textit{'{}'}</code>{'  '}
+                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\texttt{'{}'}</code>{'  '}
+                  Tab = 2 пробела
                 </div>
-              </div>
+              </React.Fragment>
             ))}
           </div>
 
-          {/* Resource files at bottom */}
-          <details style={{ borderTop: '1px solid #333', background: '#181825' }}>
-            <summary style={{ padding: '6px 10px', fontSize: 11, color: '#6c7086', cursor: 'pointer', listStyle: 'none' }}>
-              ▸ Resources ({resources.length})
+          {/* Resources */}
+          <details style={{ borderTop: '1px solid #e8eaed', background: '#f6f8fa', flexShrink: 0 }}>
+            <summary style={{ padding: '6px 12px', fontSize: 11, color: '#57606a', cursor: 'pointer', listStyle: 'none', userSelect: 'none' }}>
+              ▸ Ресурсы ({resources.length})
             </summary>
-            <div style={{ padding: '6px 10px' }}>
+            <div style={{ padding: '6px 12px 10px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
                 {resources.map(name => (
-                  <a key={name} style={{ fontSize: 10, color: '#89b4fa', fontFamily: 'monospace',
-                    background: '#313244', padding: '2px 6px', borderRadius: 2, textDecoration: 'none' }}
+                  <a key={name} style={{ fontSize: 11, color: '#0969da', fontFamily: 'monospace',
+                    background: '#ddf4ff', border: '1px solid #b6e3ff', padding: '1px 6px', borderRadius: 3, textDecoration: 'none' }}
                     href={`/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${encodeURIComponent(name)}`}
                     target="_blank" rel="noreferrer">{name}</a>
                 ))}
-                {resources.length === 0 && <span style={{ color: '#585b70', fontSize: 11 }}>No files</span>}
+                {resources.length === 0 && <span style={{ color: '#999', fontSize: 11 }}>Нет файлов</span>}
               </div>
-              <label className="btn btn-sm" style={{ cursor: 'pointer', fontSize: 11, background: '#313244', border: '1px solid #45475a', color: '#cdd6f4' }}>
-                {uploadingResource ? 'Uploading…' : '+ Upload'}
+              <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
+                {uploadingResource ? 'Загрузка…' : '+ Загрузить'}
                 <input ref={resourceInputRef} type="file" style={{ display: 'none' }} onChange={handleUploadResource} disabled={uploadingResource} />
               </label>
             </div>
@@ -345,7 +353,12 @@ export default function StatementTab({ problemId }: Props) {
         </div>
 
         {/* Right: preview */}
-        <div style={{ flex: 1, overflow: 'auto', background: '#fff' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', background: '#fff' }}>
+          {/* Preview header */}
+          <div style={{ padding: '6px 20px', borderBottom: '1px solid #e8eaed', background: '#f6f8fa',
+            fontSize: 11, color: '#57606a', letterSpacing: '0.02em', textTransform: 'uppercase', fontWeight: 600 }}>
+            Предпросмотр
+          </div>
           <StatementPreview form={debouncedForm} examples={examples} />
         </div>
       </div>
