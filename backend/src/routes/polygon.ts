@@ -173,12 +173,12 @@ async function pushToPolygon(
       }, key, secret);
     });
 
-    // Statement source files (problem.tex, tutorial.tex, images, etc.)
+    // Statement source files (problem.tex, tutorial.tex, example files, images, etc.)
     const stmtResDir = path.join(problemDir, 'statements', stmt.language);
     if (fs.existsSync(stmtResDir)) {
       for (const fname of fs.readdirSync(stmtResDir)) {
-        // Skip generated example files and metadata json
-        if (/^example\.\d/.test(fname) || fname.endsWith('.json')) continue;
+        // Skip generated HTML/PDF and metadata json; upload example files
+        if (fname.endsWith('.json')) continue;
         const fpath = path.join(stmtResDir, fname);
         if (!fs.statSync(fpath).isFile()) continue;
         await tryStep(`Statement resource (${stmt.language}/${fname})`, async () => {
@@ -340,14 +340,13 @@ async function pushToPolygon(
       await tryStep(`Test ${test.idx}`, async () => {
         const testParams: Record<string, string> = {
           problemId: pid, testset: 'tests', testIndex: String(test.idx),
-          testInput: input, useInStatements: test.sample === 1 ? 'true' : 'false',
-          checkExisting: 'true',
+          testInput: input, checkExisting: 'true',
         };
         if (groupsEnabled && test.group_name) testParams.testGroup = String(test.group_name);
         if (test.description) testParams.description = String(test.description);
-        // Per-test points only for EACH_TEST groups (for COMPLETE_GROUP, points live on the group)
-        const groupPolicy = groupPolicyMap[String(test.group_name)];
-        if (pointsEnabled && (test.points as number) > 0 && (!groupsEnabled || groupPolicy === 'each-test')) {
+        // Push points for any test that has them (for EACH_TEST per test; for
+        // COMPLETE_GROUP Polygon stores the total on the last test of the group)
+        if (pointsEnabled && (test.points as number) > 0) {
           testParams.testPoints = String(test.points);
         }
         await polygonPost('problem.saveTest', testParams, key, secret);
