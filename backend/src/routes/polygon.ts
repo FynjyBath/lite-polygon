@@ -106,6 +106,20 @@ function resolveKeys(
   return { apiKey: k, apiSecret: s };
 }
 
+const POLICY_MAP: Record<string, string> = {
+  'each-test': 'EACH_TEST', 'complete-group': 'COMPLETE_GROUP',
+};
+const FEEDBACK_MAP: Record<string, string> = {
+  'points': 'POINTS', 'complete': 'COMPLETE', 'icpc': 'ICPC', 'none': 'NONE',
+};
+const TAG_MAP: Record<string, string> = {
+  'main': 'MA', 'accepted': 'OK', 'rejected': 'RJ',
+  'wrong-answer': 'WA', 'time-limit-exceeded': 'TL',
+  'memory-limit-exceeded': 'ML', 'presentation-error': 'PE',
+  'time-limit-exceeded-or-accepted': 'TO', 'runtime-error': 'RE',
+  'time-limit-exceeded-or-memory-limit-exceeded': 'TL',
+};
+
 // Push all local problem data to an existing Polygon problem
 async function pushToPolygon(
   localProblemId: number,
@@ -127,17 +141,20 @@ async function pushToPolygon(
 
   // 1. Problem info
   await tryStep('Problem info', async () => {
-    await polygonPost('problem.updateInfo', {
+    const infoParams: Record<string, string> = {
       problemId: pid,
       inputFile: String(problem.input_file ?? ''),
       outputFile: String(problem.output_file ?? ''),
       interactive: problem.interactive === 1 ? 'true' : 'false',
       timeLimit: String(problem.time_limit ?? 1000),
       memoryLimit: String(Math.round(Number(problem.memory_limit ?? 268435456) / 1024 / 1024)),
-    }, key, secret);
+    };
+    if (problem.general_description) infoParams.generalDescription = String(problem.general_description);
+    if (problem.general_tutorial) infoParams.generalTutorial = String(problem.general_tutorial);
+    await polygonPost('problem.updateInfo', infoParams, key, secret);
   });
 
-  // 2. Statements
+  // 2. Statements + statement resources
   const stmts = listStatements(localProblemId) as Record<string, string>[];
   for (const stmt of stmts) {
     await tryStep(`Statement (${stmt.language})`, async () => {
@@ -155,6 +172,23 @@ async function pushToPolygon(
         tutorial: stmt.tutorial ?? '',
       }, key, secret);
     });
+
+    // Statement source files (problem.tex, tutorial.tex, images, etc.)
+    const stmtResDir = path.join(problemDir, 'statements', stmt.language);
+    if (fs.existsSync(stmtResDir)) {
+      for (const fname of fs.readdirSync(stmtResDir)) {
+        // Skip generated example files and metadata json
+        if (/^example\.\d/.test(fname) || fname.endsWith('.json')) continue;
+        const fpath = path.join(stmtResDir, fname);
+        if (!fs.statSync(fpath).isFile()) continue;
+        await tryStep(`Statement resource (${stmt.language}/${fname})`, async () => {
+          const content = fs.readFileSync(fpath, 'utf-8');
+          await polygonPost('problem.saveStatementResource', {
+            problemId: pid, lang: stmt.language, name: fname, file: content,
+          }, key, secret);
+        });
+      }
+    }
   }
 
   // 3. Checker
@@ -170,15 +204,11 @@ async function pushToPolygon(
         const content = fs.readFileSync(checkerFile, 'utf-8');
         await tryStep(`Checker file (${path.basename(checker.source_path)})`, async () => {
           await polygonPost('problem.saveFile', {
-            problemId: pid,
-            type: 'source',
-            name: path.basename(checker.source_path),
-            file: content,
-            sourceType: checker.source_type || 'cpp.g++17',
+            problemId: pid, type: 'source', name: path.basename(checker.source_path),
+            file: content, sourceType: checker.source_type || 'cpp.g++17',
           }, key, secret);
           await polygonPost('problem.setChecker', {
-            problemId: pid,
-            checker: path.basename(checker.source_path),
+            problemId: pid, checker: path.basename(checker.source_path),
           }, key, secret);
         });
       }
@@ -193,28 +223,47 @@ async function pushToPolygon(
       const content = fs.readFileSync(valFile, 'utf-8');
       await tryStep(`Validator (${path.basename(validator.source_path)})`, async () => {
         await polygonPost('problem.saveFile', {
-          problemId: pid,
-          type: 'source',
-          name: path.basename(validator.source_path),
-          file: content,
-          sourceType: validator.source_type || 'cpp.g++17',
+          problemId: pid, type: 'source', name: path.basename(validator.source_path),
+          file: content, sourceType: validator.source_type || 'cpp.g++17',
         }, key, secret);
         await polygonPost('problem.setValidator', {
-          problemId: pid,
-          validator: path.basename(validator.source_path),
+          problemId: pid, validator: path.basename(validator.source_path),
         }, key, secret);
       });
     }
   }
 
-  // 5. Solutions
-  const TAG_MAP: Record<string, string> = {
-    'main': 'MA', 'accepted': 'OK', 'rejected': 'RJ',
-    'wrong-answer': 'WA', 'time-limit-exceeded': 'TL',
-    'memory-limit-exceeded': 'ML', 'presentation-error': 'PE',
-    'time-limit-exceeded-or-accepted': 'TO', 'runtime-error': 'RE',
-    'time-limit-exceeded-or-memory-limit-exceeded': 'TL',
-  };
+  // 5. Interactor (interactive problems only)
+  if (problem.interactive === 1) {
+    const interactor = getAsset(localProblemId, 'interactor');
+    if (interactor?.source_path) {
+      const interFile = path.join(problemDir, interactor.source_path);
+      if (fs.existsSync(interFile)) {
+        const content = fs.readFileSync(interFile, 'utf-8');
+        await tryStep(`Interactor (${path.basename(interactor.source_path)})`, async () => {
+          await polygonPost('problem.saveFile', {
+            problemId: pid, type: 'source', name: path.basename(interactor.source_path),
+            file: content, sourceType: interactor.source_type || 'cpp.g++17',
+          }, key, secret);
+          await polygonPost('problem.setInteractor', {
+            problemId: pid, interactor: path.basename(interactor.source_path),
+          }, key, secret);
+        });
+      }
+    }
+  }
+
+  // 6. Tags
+  const tags = db.prepare('SELECT value FROM problem_tags WHERE problem_id = ?').all(localProblemId) as { value: string }[];
+  if (tags.length > 0) {
+    await tryStep('Tags', async () => {
+      await polygonPost('problem.saveTags', {
+        problemId: pid, tags: tags.map(t => t.value).join(','),
+      }, key, secret);
+    });
+  }
+
+  // 7. Solutions
   const solutions = listSolutions(localProblemId);
   for (const sol of solutions) {
     const solFile = path.join(problemDir, sol.source_path);
@@ -223,18 +272,59 @@ async function pushToPolygon(
     await tryStep(`Solution (${path.basename(sol.source_path)})`, async () => {
       const tag = TAG_MAP[sol.tag] ?? TAG_MAP[sol.tag?.toLowerCase()] ?? 'OK';
       await polygonPost('problem.saveSolution', {
-        problemId: pid,
-        name: path.basename(sol.source_path),
-        file: content,
-        sourceType: sol.source_type || 'cpp.g++17',
-        tag,
+        problemId: pid, name: path.basename(sol.source_path),
+        file: content, sourceType: sol.source_type || 'cpp.g++17', tag,
       }, key, secret);
     });
   }
 
-  // 6. Tests
+  // 8. Resource files (files/ directory)
+  const resourceDir = path.join(problemDir, 'files');
+  if (fs.existsSync(resourceDir)) {
+    for (const fname of fs.readdirSync(resourceDir)) {
+      const fpath = path.join(resourceDir, fname);
+      if (!fs.statSync(fpath).isFile()) continue;
+      const isSource = /\.(cpp|c|py|java|pas|go|h)$/.test(fname);
+      const content = fs.readFileSync(fpath, 'utf-8');
+      await tryStep(`Resource file (${fname})`, async () => {
+        await polygonPost('problem.saveFile', {
+          problemId: pid, type: isSource ? 'source' : 'resource',
+          name: fname, file: content,
+        }, key, secret);
+      });
+    }
+  }
+
+  // 9. Tests (with groups and per-test points)
   const testset = getTestset(localProblemId, 'tests');
   if (testset) {
+    const groupsEnabled = testset.groups_enabled === 1;
+    const pointsEnabled = testset.points_enabled === 1;
+
+    if (groupsEnabled) {
+      await tryStep('Enable test groups', async () => {
+        await polygonPost('problem.enableGroups', { problemId: pid, testset: 'tests', enable: 'true' }, key, secret);
+      });
+    }
+    if (pointsEnabled) {
+      await tryStep('Enable points', async () => {
+        await polygonPost('problem.enablePoints', { problemId: pid, testset: 'tests', enable: 'true' }, key, secret);
+      });
+    }
+
+    // Load groups to know per-group policy (for deciding whether to send testPoints)
+    type GroupRow = { id: number; name: string; points: number; points_policy: string; feedback_policy: string; dep_str: string | null };
+    const groups = db.prepare(
+      `SELECT tg.id, tg.name, tg.points, tg.points_policy, tg.feedback_policy,
+              GROUP_CONCAT(gd.depends_on, ',') as dep_str
+       FROM test_groups tg
+       LEFT JOIN group_dependencies gd ON gd.group_id = tg.id
+       WHERE tg.testset_id = ?
+       GROUP BY tg.id`
+    ).all(testset.id) as GroupRow[];
+    const groupPolicyMap: Record<string, string> = {};
+    for (const g of groups) groupPolicyMap[g.name] = g.points_policy;
+
     const tests = listTests(testset.id);
     for (const test of tests) {
       if (test.method === 'generated') {
@@ -245,36 +335,35 @@ async function pushToPolygon(
       const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', numStr));
       if (!fs.existsSync(inputPath)) { errors.push(`Test ${test.idx}: input file not found`); continue; }
       const input = fs.readFileSync(inputPath, 'utf-8');
+
       await tryStep(`Test ${test.idx}`, async () => {
         const testParams: Record<string, string> = {
-          problemId: pid,
-          testset: 'tests',
-          testIndex: String(test.idx),
-          testInput: input,
-          useInStatements: test.sample === 1 ? 'true' : 'false',
+          problemId: pid, testset: 'tests', testIndex: String(test.idx),
+          testInput: input, useInStatements: test.sample === 1 ? 'true' : 'false',
           checkExisting: 'true',
         };
-        if (test.description) testParams.description = test.description;
+        if (groupsEnabled && test.group_name) testParams.testGroup = String(test.group_name);
+        if (test.description) testParams.description = String(test.description);
+        // Per-test points only for EACH_TEST groups (for COMPLETE_GROUP, points live on the group)
+        const groupPolicy = groupPolicyMap[String(test.group_name)];
+        if (pointsEnabled && (test.points as number) > 0 && (!groupsEnabled || groupPolicy === 'each-test')) {
+          testParams.testPoints = String(test.points);
+        }
         await polygonPost('problem.saveTest', testParams, key, secret);
       });
     }
-  }
 
-  // 7. Resource files (from files/ directory)
-  const resourceDir = path.join(problemDir, 'files');
-  if (fs.existsSync(resourceDir)) {
-    for (const fname of fs.readdirSync(resourceDir)) {
-      const fpath = path.join(resourceDir, fname);
-      if (!fs.statSync(fpath).isFile()) continue;
-      const isSource = /\.(cpp|c|py|java|pas|go)$/.test(fname);
-      const content = fs.readFileSync(fpath, 'utf-8');
-      await tryStep(`Resource file (${fname})`, async () => {
-        await polygonPost('problem.saveFile', {
-          problemId: pid,
-          type: isSource ? 'source' : 'resource',
-          name: fname,
-          file: content,
-        }, key, secret);
+    // Save test groups AFTER all tests are pushed (groups are created by the saveTest calls above)
+    for (const g of groups) {
+      await tryStep(`Test group "${g.name}"`, async () => {
+        const groupParams: Record<string, string> = {
+          problemId: pid, testset: 'tests', group: String(g.name),
+          pointsPolicy: POLICY_MAP[g.points_policy] ?? g.points_policy.toUpperCase().replace(/-/g, '_'),
+          feedbackPolicy: FEEDBACK_MAP[g.feedback_policy] ?? g.feedback_policy.toUpperCase(),
+        };
+        if ((g.points as number) > 0) groupParams.points = String(g.points);
+        if (g.dep_str) groupParams.dependencies = g.dep_str;
+        await polygonPost('problem.saveTestGroup', groupParams, key, secret);
       });
     }
   }
