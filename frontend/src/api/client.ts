@@ -115,7 +115,9 @@ export const problems = {
   testAnswer: (problemId: number, testIndex: number, testset?: string): string =>
     `${BASE}/problem.testAnswer?problemId=${problemId}&testIndex=${testIndex}${testset ? `&testset=${testset}` : ''}`,
   generateAnswers: (problemId: number, testset?: string) =>
-    post<{ generated: number; errors: string[] }>('problem.generateAnswers', { problemId, testset }),
+    post<{ started: boolean; alreadyRunning?: boolean; running: boolean; total: number; done: number; generated: number; errors: string[]; errorCount: number }>('problem.generateAnswers', { problemId, testset }),
+  generateAnswersProgress: (problemId: number) =>
+    get<{ running: boolean; total: number; done: number; generated: number; errors: string[]; errorCount: number }>('problem.generateAnswersProgress', { problemId }),
   updateTest: (problemId: number, testIndex: number, data: { sample?: boolean; group?: string; points?: number; description?: string }, testset?: string) =>
     post<null>('problem.updateTest', { problemId, testIndex, testset, ...Object.fromEntries(Object.entries({ sample: data.sample?.toString(), group: data.group, points: data.points?.toString(), description: data.description }).filter(([,v]) => v !== undefined)) }),
   moveTest: (problemId: number, testIndex: number, direction: 'up' | 'down', testset?: string) =>

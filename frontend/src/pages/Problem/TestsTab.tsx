@@ -40,6 +40,9 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const [moveToIdx, setMoveToIdx] = useState('');
   const lastClickedRef = useRef<number | null>(null);
 
+  // Answer generation progress
+  const [genProgress, setGenProgress] = useState<{ done: number; total: number; generated: number; errorCount: number } | null>(null);
+
   // Zip import + drag-and-drop reordering
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null);
   const zipRef = useRef<HTMLInputElement>(null);
@@ -61,12 +64,24 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   // ── Generate Answers ──────────────────────────────────────────────────────
   async function handleGenerateAnswers() {
     setMsg(''); setError(''); setGenerating(true);
+    setGenProgress({ done: 0, total: 0, generated: 0, errorCount: 0 });
     try {
-      const r = await problems.generateAnswers(problemId);
-      setMsg(`Generated ${r.generated} answer(s)${r.errors.length ? '; errors: ' + r.errors.join(', ') : ''}`);
-      reload();
+      const start = await problems.generateAnswers(problemId);
+      setGenProgress({ done: start.done, total: start.total, generated: start.generated, errorCount: start.errorCount });
+      // Poll progress until the job finishes.
+      for (;;) {
+        await new Promise(r => setTimeout(r, 700));
+        const p = await problems.generateAnswersProgress(problemId);
+        setGenProgress({ done: p.done, total: p.total, generated: p.generated, errorCount: p.errorCount });
+        if (!p.running) {
+          setMsg(`Generated ${p.generated}/${p.total} answer(s)` +
+            (p.errorCount ? ` — ${p.errorCount} error(s): ${p.errors.slice(0, 3).join('; ')}${p.errorCount > 3 ? '…' : ''}` : ''));
+          reload();
+          break;
+        }
+      }
     } catch (err: unknown) { setError((err as Error).message); }
-    finally { setGenerating(false); }
+    finally { setGenerating(false); setGenProgress(null); }
   }
 
   // ── Upload test files ─────────────────────────────────────────────────────
@@ -368,7 +383,11 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
         <h2>Tests ({tests.length})</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-sm" onClick={handleGenerateAnswers} disabled={generating}>
-            {generating ? 'Generating…' : 'Generate Answers'}
+            {generating
+              ? (genProgress && genProgress.total
+                  ? <><span className="spinner" style={{ marginRight: 4 }} />Generating {genProgress.done}/{genProgress.total}…</>
+                  : <><span className="spinner" style={{ marginRight: 4 }} />Generating…</>)
+              : 'Generate Answers'}
           </button>
           <label className="btn btn-sm" style={{ cursor: 'pointer', marginBottom: 0 }}>
             {uploading ? 'Uploading…' : 'Upload Tests'}
@@ -382,6 +401,18 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
       </div>
       {zipProgress && (
         <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${Math.round(100 * zipProgress.done / zipProgress.total)}%` }} /></div>
+      )}
+      {generating && genProgress && (
+        <div style={{ margin: '6px 0' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted, #666)', marginBottom: 3 }}>
+            Generating answers: {genProgress.done}/{genProgress.total || '?'}
+            {genProgress.generated ? ` · ${genProgress.generated} ok` : ''}
+            {genProgress.errorCount ? ` · ${genProgress.errorCount} error(s)` : ''}
+          </div>
+          {genProgress.total
+            ? <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${Math.round(100 * genProgress.done / genProgress.total)}%` }} /></div>
+            : <div className="progress-bar"><div className="progress-bar-fill-indeterminate" /></div>}
+        </div>
       )}
 
       {msg && <div className="alert alert-success">{msg}</div>}

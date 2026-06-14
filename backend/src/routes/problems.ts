@@ -55,6 +55,14 @@ function getProblemForUser(problemId: number, user: { id: number; username: stri
   return problem;
 }
 
+// In-memory progress for the answer-generation background job, keyed by problem.
+interface AnswerGenJob { total: number; done: number; generated: number; errors: string[]; running: boolean; startedAt: number; finishedAt?: number; }
+const answerGenJobs = new Map<number, AnswerGenJob>();
+// Only expose a capped slice of errors to keep responses small.
+function publicJob(j: AnswerGenJob) {
+  return { running: j.running, total: j.total, done: j.done, generated: j.generated, errors: j.errors.slice(0, 50), errorCount: j.errors.length };
+}
+
 export async function problemRoutes(app: FastifyInstance): Promise<void> {
 
   // problems.list
@@ -613,7 +621,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(fs.createReadStream(answerPath));
   });
 
-  // problem.generateAnswers — compile main solution, run on every test, write .a files
+  // problem.generateAnswers — compile main solution, run on every test, write .a
+  // files. Runs as a background job so the client can poll live progress.
   app.post('/api/problem.generateAnswers', async (req, reply) => {
     const user = await auth(req, reply);
     if (!user) return;
@@ -624,23 +633,60 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const tsName = body.testset ?? 'tests';
     const testset = getTestset(id, tsName);
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
+
+    const existing = answerGenJobs.get(id);
+    if (existing?.running) return ok({ started: false, alreadyRunning: true, ...publicJob(existing) });
+
     const problemDir = getProblemDir(id);
     const tests = listTests(testset.id);
-    let generated = 0;
-    const errors: string[] = [];
-    for (const t of tests) {
-      const num = String(t.idx).padStart(2, '0');
-      const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', num));
-      const answerPath = path.join(problemDir, testset.answer_path_pattern.replace('%02d', num));
-      if (!fs.existsSync(inputPath)) { errors.push(`Test ${t.idx}: input missing`); continue; }
-      const r = await generateTestAnswer(id, inputPath, testset.time_limit ?? 1000, testset.memory_limit ?? 268435456, answerPath);
-      if (r.success) {
-        generated++;
-      } else {
-        errors.push(`Test ${t.idx}: ${r.error}`);
+    const job: AnswerGenJob = { total: tests.length, done: 0, generated: 0, errors: [], running: true, startedAt: Date.now() };
+    answerGenJobs.set(id, job);
+
+    // Fire-and-forget; progress is read via problem.generateAnswersProgress.
+    (async () => {
+      for (const t of tests) {
+        const num = String(t.idx).padStart(2, '0');
+        const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', num));
+        const answerPath = path.join(problemDir, testset.answer_path_pattern.replace('%02d', num));
+
+        // Materialize the input first for generated tests that have no file yet.
+        if (!fs.existsSync(inputPath) && t.method === 'generated' && t.cmd) {
+          try {
+            const g = await generateTestInput(id, testset.id, t.idx);
+            if (g.success) {
+              fs.mkdirSync(path.dirname(inputPath), { recursive: true });
+              fs.copyFileSync(g.inputPath, inputPath);
+            }
+          } catch { /* fall through to the missing-input error below */ }
+        }
+        if (!fs.existsSync(inputPath)) { job.errors.push(`Test ${t.idx}: input missing`); job.done++; continue; }
+
+        try {
+          const r = await generateTestAnswer(id, inputPath, testset.time_limit ?? 1000, testset.memory_limit ?? 268435456, answerPath);
+          if (r.success) job.generated++;
+          else job.errors.push(`Test ${t.idx}: ${r.error}`);
+        } catch (e: unknown) {
+          job.errors.push(`Test ${t.idx}: ${(e as Error).message}`);
+        }
+        job.done++;
       }
-    }
-    return ok({ generated, errors });
+      job.running = false;
+      job.finishedAt = Date.now();
+    })().catch(e => { job.running = false; job.finishedAt = Date.now(); job.errors.push(String(e)); });
+
+    return ok({ started: true, ...publicJob(job) });
+  });
+
+  // problem.generateAnswersProgress — poll the current/last answer-gen job
+  app.get('/api/problem.generateAnswersProgress', async (req, reply) => {
+    const user = await auth(req, reply);
+    if (!user) return;
+    const id = parseInt((req.query as { problemId?: string }).problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    const job = answerGenJobs.get(id);
+    if (!job) return ok({ running: false, total: 0, done: 0, generated: 0, errors: [] });
+    return ok(publicJob(job));
   });
 
   // problem.setTestGroup
