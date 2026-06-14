@@ -1,6 +1,24 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+
+/**
+ * Build a minimal, secret-free environment for running untrusted programs
+ * (solutions, generators, checkers, validators) and build tools. The server's
+ * own environment may hold secrets (e.g. Polygon API keys, DATA_DIR); never
+ * hand those to spawned code. Only PATH and locale/home essentials are kept.
+ */
+function safeEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+    HOME: process.env.HOME ?? os.tmpdir(),
+    TMPDIR: os.tmpdir(),
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C.UTF-8',
+    ...extra,
+  };
+}
 
 export interface CompileResult {
   success: boolean;
@@ -28,10 +46,21 @@ function getCompileCommand(sourceType: string): { compiler: string; flags: strin
     else if (lower.includes('g++23') || lower.includes('c++23')) std = '-std=c++23';
     return { compiler: 'g++', flags: ['-O2', std, ...CPP_FLAGS_BASE.slice(1)] };
   }
-  if (lower.includes('java')) {
-    return { compiler: 'javac', flags: [] };
-  }
   return null;
+}
+
+function isJavaLanguage(sourceType: string): boolean {
+  return sourceType.toLowerCase().includes('java');
+}
+
+/** Single-quote a string for safe embedding in a /bin/sh script. */
+function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Write an executable wrapper script at outputPath that runs `command`. */
+function writeWrapper(outputPath: string, command: string): void {
+  fs.writeFileSync(outputPath, `#!/bin/sh\n${command} "$@"\n`, { mode: 0o755 });
 }
 
 export function isInterpretedLanguage(sourceType: string): boolean {
@@ -62,14 +91,27 @@ function spawnAsync(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     input?: Buffer;
+    inputFile?: string;
     timeout?: number;
     maxOutputBytes?: number;
+    memoryLimitKb?: number;
   }
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
+    // Enforce an address-space cap so a runaway program cannot OOM the host.
+    // Implemented via `sh -c 'ulimit -v "$1"; shift; exec "$@"'` — the program
+    // and its args are passed as separate argv entries and run through `exec
+    // "$@"`, so there is no shell word-splitting or injection.
+    let realCmd = cmd;
+    let realArgs = args;
+    if (opts.memoryLimitKb && process.platform !== 'win32') {
+      realCmd = '/bin/sh';
+      realArgs = ['-c', 'ulimit -v "$1"; shift; exec "$@"', 'memwrap', String(opts.memoryLimitKb), cmd, ...args];
+    }
+
     let proc: ReturnType<typeof spawn>;
     try {
-      proc = spawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env });
+      proc = spawn(realCmd, realArgs, { cwd: opts.cwd, env: opts.env ?? process.env });
     } catch (err) {
       resolve({ status: null, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), timedOut: false, error: err as Error });
       return;
@@ -113,7 +155,12 @@ function spawnAsync(
     // Suppress EPIPE — the process may exit before reading all stdin
     proc.stdin?.on('error', () => { /* ignore */ });
 
-    if (opts.input !== undefined) {
+    if (opts.inputFile) {
+      // Stream large inputs from disk instead of buffering them in memory.
+      const rs = fs.createReadStream(opts.inputFile);
+      rs.on('error', () => { try { proc.stdin?.end(); } catch { /* ignore */ } });
+      rs.pipe(proc.stdin!);
+    } else if (opts.input !== undefined) {
       proc.stdin?.end(opts.input);
     } else {
       proc.stdin?.end();
@@ -122,6 +169,30 @@ function spawnAsync(
 }
 
 export async function compileSource(sourcePath: string, sourceType: string, outputPath: string): Promise<CompileResult> {
+  // Interpreted languages (Python / PyPy): no compilation — emit a small
+  // wrapper script that execs the interpreter on the source. Downstream code
+  // can then run `outputPath` like any other binary.
+  if (isInterpretedLanguage(sourceType)) {
+    const interp = getInterpreterCommand(sourceType)!;
+    writeWrapper(outputPath, `exec ${interp} ${shQuote(sourcePath)}`);
+    return { success: true, binaryPath: outputPath, stderr: '', stdout: '' };
+  }
+
+  // Java: compile classes into a sibling dir, then wrap `java -cp <dir> <Main>`.
+  if (isJavaLanguage(sourceType)) {
+    const classDir = outputPath + '_classes';
+    fs.mkdirSync(classDir, { recursive: true });
+    const jr = await spawnAsync('javac', ['-encoding', 'UTF-8', '-d', classDir, sourcePath], {
+      timeout: 60000, cwd: path.dirname(sourcePath), env: safeEnv(),
+    });
+    if (jr.error || jr.status !== 0) {
+      return { success: false, binaryPath: '', stderr: jr.error?.message ?? jr.stderr.toString('utf-8'), stdout: '' };
+    }
+    const mainClass = path.basename(sourcePath, path.extname(sourcePath));
+    writeWrapper(outputPath, `exec java -XX:+UseSerialGC -cp ${shQuote(classDir)} ${mainClass}`);
+    return { success: true, binaryPath: outputPath, stderr: '', stdout: '' };
+  }
+
   const cmd = getCompileCommand(sourceType);
   if (!cmd) {
     if (sourceType.startsWith('h.') || sourceType === '') {
@@ -134,6 +205,7 @@ export async function compileSource(sourcePath: string, sourceType: string, outp
   const result = await spawnAsync(cmd.compiler, args, {
     timeout: 60000,
     cwd: path.dirname(sourcePath),
+    env: safeEnv(),
   });
 
   if (result.error) {
@@ -161,21 +233,29 @@ export interface RunOptions {
 }
 
 export async function runBinary(binaryPath: string, options: RunOptions): Promise<RunResult> {
-  const { timeLimitMs, stdin, stdinFile, stdoutFile, cwd, args = [], env } = options;
+  const { timeLimitMs, memoryLimitBytes, stdin, stdinFile, stdoutFile, cwd, args = [], env } = options;
 
   const startTime = Date.now();
-  const inputData = stdinFile && fs.existsSync(stdinFile)
-    ? fs.readFileSync(stdinFile)
-    : stdin
-    ? Buffer.from(stdin)
+  // Prefer streaming the input file straight into the child's stdin; only fall
+  // back to an in-memory buffer for the rare inline-string case. This avoids
+  // loading multi-megabyte test inputs into memory for every parallel run.
+  const useInputFile = stdinFile && fs.existsSync(stdinFile);
+  const inputData = !useInputFile && stdin ? Buffer.from(stdin) : undefined;
+
+  // Cap address space generously above the configured limit to stop a runaway
+  // program from OOM-ing the host, without false-flagging normal solutions.
+  const memoryLimitKb = memoryLimitBytes
+    ? Math.floor(Math.max(memoryLimitBytes * 4, 512 * 1024 * 1024) / 1024)
     : undefined;
 
   const result = await spawnAsync(binaryPath, args, {
     input: inputData,
+    inputFile: useInputFile ? stdinFile : undefined,
     timeout: timeLimitMs + 1000,
     cwd: cwd || path.dirname(binaryPath),
-    env: env ? { ...process.env, ...env } : process.env,
+    env: safeEnv(env),
     maxOutputBytes: 64 * 1024 * 1024,
+    memoryLimitKb,
   });
 
   const timeMs = Date.now() - startTime;
@@ -221,6 +301,7 @@ export async function runChecker(
   const result = await spawnAsync(checkerBinary, [inputFile, outputFile, answerFile], {
     timeout: 30000,
     cwd: cwd || path.dirname(checkerBinary),
+    env: safeEnv(),
   });
 
   const exitCode = result.status ?? -1;
@@ -245,9 +326,10 @@ export async function runValidator(
   if (group) args.push('--group', group);
 
   const result = await spawnAsync(validatorBinary, args, {
-    input: fs.readFileSync(inputFile),
+    inputFile,
     timeout: 30000,
     cwd: path.dirname(validatorBinary),
+    env: safeEnv(),
   });
 
   const exitCode = result.status ?? -1;
@@ -258,5 +340,7 @@ export async function runValidator(
 }
 
 export function isCompilable(sourceType: string): boolean {
-  return getCompileCommand(sourceType) !== null;
+  return getCompileCommand(sourceType) !== null
+    || isJavaLanguage(sourceType)
+    || isInterpretedLanguage(sourceType);
 }

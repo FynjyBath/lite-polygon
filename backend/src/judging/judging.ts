@@ -210,6 +210,7 @@ export async function generateTestAnswer(
 
   const result = await runBinary(binary, {
     timeLimitMs: timeLimitMs * 3, // generous for answer generation
+    memoryLimitBytes,
     stdinFile: inputPath,
     stdoutFile: answerPath,
     cwd: problemDir,
@@ -323,6 +324,7 @@ export async function runInvocation(
 
       const runResult = await runBinary(binary, {
         timeLimitMs,
+        memoryLimitBytes: memLimitBytes,
         stdinFile: inputFile,
         stdoutFile: outputFile,
         cwd: problemDir,

@@ -6,6 +6,28 @@ import {
 } from '../services/auth';
 import { verifyApiSig } from '../utils/apiSig';
 
+// Simple in-memory login throttle to slow down brute-force attempts. Keyed by
+// client IP; counts consecutive failures and blocks for a cooldown once a
+// threshold is hit. Resets on success or after the window elapses.
+const MAX_FAILS = 8;
+const BLOCK_MS = 5 * 60 * 1000;
+const loginFails = new Map<string, { count: number; blockedUntil: number }>();
+
+function loginThrottle(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const e = loginFails.get(ip);
+  if (e && e.blockedUntil > Date.now()) {
+    return { allowed: false, retryAfterSec: Math.ceil((e.blockedUntil - Date.now()) / 1000) };
+  }
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function recordLoginFail(ip: string): void {
+  const e = loginFails.get(ip) ?? { count: 0, blockedUntil: 0 };
+  e.count++;
+  if (e.count >= MAX_FAILS) { e.blockedUntil = Date.now() + BLOCK_MS; e.count = 0; }
+  loginFails.set(ip, e);
+}
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   // POST /api/auth/login
   app.post('/api/auth/login', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -13,10 +35,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!username || !password) {
       return reply.code(400).send({ status: 'FAILED', comment: 'Missing credentials' });
     }
+    const throttle = loginThrottle(req.ip);
+    if (!throttle.allowed) {
+      reply.header('Retry-After', String(throttle.retryAfterSec));
+      return reply.code(429).send({ status: 'FAILED', comment: `Too many failed attempts. Try again in ${throttle.retryAfterSec}s.` });
+    }
     const user = findUserByUsername(username);
     if (!user || !verifyPassword(user, password)) {
+      recordLoginFail(req.ip);
       return reply.code(401).send({ status: 'FAILED', comment: 'Invalid credentials' });
     }
+    loginFails.delete(req.ip);
     const sessionId = createSession(user.id);
     reply.setCookie('session', sessionId, {
       httpOnly: true,

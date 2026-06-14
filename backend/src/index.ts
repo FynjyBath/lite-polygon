@@ -27,8 +27,15 @@ async function main() {
 
   // Plugins
   await app.register(fastifyCookie);
+  // CORS: the SPA is served from this same origin in production, so cross-origin
+  // access is disabled by default. Reflecting an arbitrary origin together with
+  // `credentials: true` would let any website make authenticated requests and
+  // read the responses. For a split dev setup, set CORS_ORIGIN to an explicit
+  // comma-separated allowlist (e.g. "http://localhost:5173").
   await app.register(fastifyCors, {
-    origin: process.env.CORS_ORIGIN || true,
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : false,
     credentials: true,
   });
   await app.register(fastifyMultipart, {

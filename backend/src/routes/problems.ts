@@ -18,6 +18,7 @@ import {
   getCautions,
 } from '../services/problems';
 import { getProblemDir, db } from '../db/schema';
+import { safeJoin, isPlainName } from '../utils/safePath';
 import { importPackage } from '../services/import';
 import { buildPackage } from '../packages/builder';
 import { compileAsset, compileSolution, runInvocation, generateTestAnswer } from '../judging/judging';
@@ -185,6 +186,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id || !body.lang) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and lang required' });
+    if (!isPlainName(body.lang)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
     const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     upsertStatement(id, body.lang, {
@@ -221,6 +223,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, lang } = req.query as { problemId?: string; lang?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!isPlainName(lang ?? 'russian')) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
     const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
     const stmt = getStatement(id, lang ?? 'russian') as Record<string, string> | null;
@@ -258,8 +261,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!filePath) return reply.code(400).send({ status: 'FAILED', comment: 'path required' });
 
     const problemDir = getProblemDir(id);
-    const dest = path.join(problemDir, filePath);
-    if (!dest.startsWith(problemDir)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid path' });
+    const dest = safeJoin(problemDir, filePath);
+    if (!dest) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid path' });
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     if (content !== undefined) fs.writeFileSync(dest, content, 'utf-8');
 
@@ -276,8 +279,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!id || !filePath) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and path required' });
     if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
-    const dest = path.join(problemDir, filePath);
-    if (!dest.startsWith(problemDir) || !fs.existsSync(dest)) {
+    const dest = safeJoin(problemDir, filePath);
+    if (!dest || !fs.existsSync(dest)) {
       return reply.code(404).send({ status: 'FAILED', comment: 'File not found' });
     }
     const content = fs.readFileSync(dest);
@@ -311,7 +314,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!getProblemForUser(id, user, reply)) return;
 
     const problemDir = getProblemDir(id);
-    const dest = path.join(problemDir, body.sourcePath);
+    const dest = safeJoin(problemDir, body.sourcePath);
+    if (!dest) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid sourcePath' });
     if (body.content !== undefined) {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, body.content, 'utf-8');
@@ -974,14 +978,16 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const solId = parseInt(body.solutionId ?? '');
     const newName = (body.newName ?? '').trim();
     if (!id || !solId || !newName) return reply.code(400).send({ status: 'FAILED', comment: 'problemId, solutionId and newName required' });
+    if (!isPlainName(newName)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid file name' });
     if (!getProblemForUser(id, user, reply)) return;
     const solution = getSolution(solId);
     if (!solution || solution.problem_id !== id) return reply.code(404).send({ status: 'FAILED', comment: 'Solution not found' });
     const problemDir = getProblemDir(id);
     const dir = path.dirname(solution.source_path);
     const newPath = path.join(dir, newName);
-    const oldFile = path.join(problemDir, solution.source_path);
-    const newFile = path.join(problemDir, newPath);
+    const oldFile = safeJoin(problemDir, solution.source_path);
+    const newFile = safeJoin(problemDir, newPath);
+    if (!oldFile || !newFile) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid path' });
     if (fs.existsSync(oldFile)) {
       fs.mkdirSync(path.dirname(newFile), { recursive: true });
       fs.renameSync(oldFile, newFile);
@@ -1291,6 +1297,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
     if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
+    if (!isPlainName(lang ?? 'russian')) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
     const stmtDir = path.join(problemDir, 'statements', lang ?? 'russian');
     const resources: string[] = [];
     if (fs.existsSync(stmtDir)) {
@@ -1309,8 +1316,11 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!id || !name) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and name required' });
     if (!getProblemForUser(id, user, reply)) return;
     const problemDir = getProblemDir(id);
-    const filePath = path.join(problemDir, 'statements', lang ?? 'russian', name);
-    if (!filePath.startsWith(problemDir) || !fs.existsSync(filePath)) {
+    if (!isPlainName(lang ?? 'russian') || !isPlainName(name)) {
+      return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang or name' });
+    }
+    const filePath = safeJoin(problemDir, 'statements', lang ?? 'russian', name);
+    if (!filePath || !fs.existsSync(filePath)) {
       return reply.code(404).send({ status: 'FAILED', comment: 'Resource not found' });
     }
     const content = fs.readFileSync(filePath);
@@ -1329,10 +1339,14 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const lang = fields?.lang?.value ?? 'russian';
     if (!id || !data) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required and file needed' });
     if (!getProblemForUser(id, user, reply)) return;
+    if (!isPlainName(lang) || !isPlainName(data.filename)) {
+      return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang or file name' });
+    }
     const problemDir = getProblemDir(id);
     const stmtDir = path.join(problemDir, 'statements', lang);
     fs.mkdirSync(stmtDir, { recursive: true });
-    const dest = path.join(stmtDir, data.filename);
+    const dest = safeJoin(stmtDir, data.filename);
+    if (!dest) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid file name' });
     const buffer = await data.toBuffer();
     fs.writeFileSync(dest, buffer);
     updateProblem(id, { modified: 1 });
@@ -1363,11 +1377,12 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const { problemId, lang } = req.body as { problemId?: string | number; lang?: string };
     const id = parseInt(String(problemId ?? ''));
     if (!id || !lang) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and lang required' });
+    if (!isPlainName(lang)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
     if (!getProblemForUser(id, user, reply)) return;
     db.prepare('DELETE FROM statements WHERE problem_id = ? AND language = ?').run(id, lang);
     const problemDir = getProblemDir(id);
-    const sectionsDir = path.join(problemDir, 'statement-sections', lang);
-    if (fs.existsSync(sectionsDir)) fs.rmSync(sectionsDir, { recursive: true, force: true });
+    const sectionsDir = safeJoin(problemDir, 'statement-sections', lang);
+    if (sectionsDir && fs.existsSync(sectionsDir)) fs.rmSync(sectionsDir, { recursive: true, force: true });
     updateProblem(id, { modified: 1 });
     return ok(null);
   });
