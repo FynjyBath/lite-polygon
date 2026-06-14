@@ -61,6 +61,10 @@ function LaTeXEditor({ value, onChange, placeholder }: {
   );
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function StatementPreview({ form, examples }: { form: Form; examples: string[][] }) {
   const html = useCallback((text: string) => latexToHtml(text), []);
   const hasContent = Object.values(form).some(v => v.trim());
@@ -210,6 +214,42 @@ export default function StatementTab({ problemId }: Props) {
     } catch (err: unknown) { setError((err as Error).message); }
   }
 
+  // Export the rendered statement to PDF by opening a clean print window and
+  // letting the browser "Save as PDF". KaTeX renders crisply via its CDN CSS.
+  function handleExportPdf() {
+    const h = (t: string) => latexToHtml(t);
+    const sec = (title: string, body: string) =>
+      body.trim() ? `<section><h3>${title}</h3><div>${h(body)}</div></section>` : '';
+    const examplesHtml = examples.length ? `<section><h3>Примеры</h3>${examples.map(([i, o]) =>
+      `<table class="ex"><tr><th>Входные данные</th><th>Выходные данные</th></tr>
+       <tr><td><pre>${escapeHtml(i)}</pre></td><td><pre>${escapeHtml(o)}</pre></td></tr></table>`).join('')}</section>` : '';
+    const doc = `<!doctype html><html><head><meta charset="utf-8">
+      <title>${escapeHtml(form.name || 'statement')}</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+      <style>
+        body{font-family:Georgia,'Times New Roman',serif;font-size:12pt;line-height:1.5;max-width:720px;margin:24px auto;color:#000;padding:0 16px}
+        h1{text-align:center;font-size:18pt;margin-bottom:4px}
+        h3{font-family:Arial,sans-serif;font-size:11pt;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #999;padding-bottom:3px;margin:14px 0 6px}
+        pre{font-family:'Courier New',monospace;font-size:10pt;background:#f5f5f5;border:1px solid #ccc;padding:6px;white-space:pre-wrap;margin:0}
+        table.ex{border-collapse:collapse;width:100%;margin:6px 0}
+        table.ex th{font-family:Arial,sans-serif;font-size:9pt;text-align:left;text-transform:uppercase;border:1px solid #ccc;padding:3px 6px;background:#f0f0f0}
+        table.ex td{border:1px solid #ccc;padding:0;vertical-align:top;width:50%}
+        @media print{body{margin:0}}
+      </style></head><body>
+      ${form.name ? `<h1>${escapeHtml(form.name)}</h1>` : ''}
+      ${form.legend.trim() ? `<div>${h(form.legend)}</div>` : ''}
+      ${sec('Входные данные', form.input)}
+      ${sec('Выходные данные', form.output)}
+      ${examplesHtml}
+      ${sec('Примечание', form.notes)}
+      ${sec('Scoring', form.scoring)}
+      <script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
+      </body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) { setError('Popup blocked — allow popups to export PDF'); return; }
+    w.document.open(); w.document.write(doc); w.document.close();
+  }
+
   async function handleDeleteCurrent() {
     if (!stmts.find(s => s.language === lang)) return;
     if (!confirm(`Delete statement for "${lang}"?`)) return;
@@ -274,6 +314,7 @@ export default function StatementTab({ problemId }: Props) {
         <div style={{ flex: 1 }} />
         {msg && <span style={{ color: '#2a7a2a', fontSize: 12 }}>✓ {msg}</span>}
         {error && <span style={{ color: '#c00', fontSize: 12 }}>✗ {error}</span>}
+        <button className="btn btn-sm" onClick={handleExportPdf} title="Open a print view to save as PDF">Export PDF</button>
         {stmts.find(s => s.language === lang) && (
           <button className="btn btn-sm btn-danger" onClick={handleDeleteCurrent}>Delete</button>
         )}

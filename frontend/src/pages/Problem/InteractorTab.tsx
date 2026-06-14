@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { problems, Asset, ProblemInfo } from '../../api/client';
+import CodeEditor from '../../components/CodeEditor';
 
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
 
@@ -76,12 +77,11 @@ export default function InteractorTab({ problemId, info, onUpdate }: Props) {
           <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
             style={{ fontSize: 12 }} />
         </div>
-        {derivedPath && (
-          <div className="form-row">
-            <label>Will save to:</label>
-            <span style={{ fontSize: 12, color: '#555', fontFamily: 'monospace' }}>{derivedPath}</span>
-          </div>
-        )}
+        <div className="form-row">
+          <label>File path:</label>
+          <input value={derivedPath} onChange={e => setDerivedPath(e.target.value)}
+            placeholder="files/interactor.cpp" style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+        </div>
         <div className="form-row">
           <label>Source type:</label>
           <select value={sourceType} onChange={e => setSourceType(e.target.value)}>
@@ -90,12 +90,10 @@ export default function InteractorTab({ problemId, info, onUpdate }: Props) {
             <option value="cpp.gcc14-64-msys2-g++23">cpp.gcc14-64-msys2-g++23</option>
           </select>
         </div>
-        {content && (
-          <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-            <label style={{ marginBottom: 4 }}>Content preview:</label>
-            <div className="code-view" style={{ maxHeight: 120 }}>{content.slice(0, 500)}{content.length > 500 ? '…' : ''}</div>
-          </div>
-        )}
+        <div className="form-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <label style={{ marginBottom: 4 }}>Interactor source:</label>
+          <CodeEditor value={content} onChange={setContent} sourceType={sourceType} height={360} />
+        </div>
         <div className="form-actions">
           <button type="submit" className="btn btn-primary">Set Interactor</button>
         </div>

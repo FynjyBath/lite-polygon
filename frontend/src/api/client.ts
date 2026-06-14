@@ -133,8 +133,8 @@ export const problems = {
   saveTags: (problemId: number, tags: string[]) => post<null>('problem.saveTags', { problemId, tags: tags.join(',') }),
   cautions: (problemId: number) => get<{ cautions: string[]; aiTips: unknown[] }>('problem.cautions', { problemId }),
   packages: (problemId: number) => get<Package[]>('problem.packages', { problemId }),
-  buildPackage: (problemId: number, type: string, comment?: string) =>
-    post<{ packageId: number; state: string }>('problem.buildPackage', { problemId, type, comment }),
+  buildPackage: (problemId: number, type: string, comment?: string, verify?: boolean) =>
+    post<{ packageId: number; state: string }>('problem.buildPackage', { problemId, type, comment, verify: verify ? 'true' : undefined }),
   packageDownloadUrl: (problemId: number, packageId: number): string =>
     `${BASE}/problem.package?problemId=${problemId}&packageId=${packageId}`,
   importPackage: (file: File, overwrite = false): Promise<ImportResult> => {
@@ -159,6 +159,15 @@ export const problems = {
   moveTestsTo: (problemId: number, testIndices: number[], targetIdx: number, testset?: string) =>
     post<{ count: number }>('problem.moveTestsTo', { problemId, testIndices, targetIdx, testset }),
   validate: (problemId: number) => get<{ errors: string[]; warnings: string[] }>('problem.validate', { problemId }),
+  verify: (problemId: number) => post<VerifyReport>('problem.verify', { problemId }),
+  testScript: (problemId: number) => get<{ script: string }>('problem.testScript', { problemId }),
+  saveTestScript: (problemId: number, script: string) => post<null>('problem.saveTestScript', { problemId, script }),
+  expandTestScript: (problemId: number, script: string) =>
+    post<{ lines: string[]; count: number }>('problem.expandTestScript', { problemId, script }),
+  applyTestScript: (problemId: number, script: string, mode: 'append' | 'replace') =>
+    post<{ count: number }>('problem.applyTestScript', { problemId, script, mode }),
+  previewScriptLine: (problemId: number, line: string) =>
+    post<{ preview: string; truncated: boolean; size: number }>('problem.previewScriptLine', { problemId, line }),
   statementResources: (problemId: number, lang: string) =>
     get<string[]>('problem.statementResources', { problemId, lang }),
   saveStatementResource: (problemId: number, lang: string, file: File): Promise<{ name: string }> => {
@@ -185,6 +194,9 @@ export const polygon = {
 };
 
 // Types
+export interface VerifyStep { name: string; status: 'ok' | 'warn' | 'fail'; details?: string[]; }
+export interface VerifyReport { ok: boolean; steps: VerifyStep[]; }
+
 export interface ProblemSummary {
   id: number;
   shortName: string;

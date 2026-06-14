@@ -16,6 +16,20 @@ interface AuthCtx {
 export const AuthContext = createContext<AuthCtx>({ user: null, setUser: () => {}, loading: true });
 export const useAuth = () => useContext(AuthContext);
 
+type Theme = 'light' | 'dark';
+interface ThemeCtx { theme: Theme; toggle: () => void; }
+export const ThemeContext = createContext<ThemeCtx>({ theme: 'light', toggle: () => {} });
+export const useTheme = () => useContext(ThemeContext);
+
+function useThemeState(): ThemeCtx {
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'light');
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+  return { theme, toggle: () => setTheme(t => (t === 'light' ? 'dark' : 'light')) };
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
@@ -26,6 +40,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [user, setUser] = useState<AuthCtx['user']>(null);
   const [loading, setLoading] = useState(true);
+  const themeCtx = useThemeState();
 
   useEffect(() => {
     auth.me().then(u => {
@@ -36,6 +51,7 @@ export default function App() {
   }, []);
 
   return (
+    <ThemeContext.Provider value={themeCtx}>
     <AuthContext.Provider value={{ user, setUser, loading }}>
       <TopBar />
       <Routes>
@@ -47,5 +63,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthContext.Provider>
+    </ThemeContext.Provider>
   );
 }

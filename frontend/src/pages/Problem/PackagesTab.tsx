@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { problems, Package, ProblemInfo } from '../../api/client';
+import { problems, Package, ProblemInfo, VerifyReport } from '../../api/client';
 
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
 
@@ -15,6 +15,9 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
   const [validErrors, setValidErrors] = useState<string[]>([]);
   const [validWarnings, setValidWarnings] = useState<string[]>([]);
   const [showValidation, setShowValidation] = useState(false);
+  const [verifyBeforeBuild, setVerifyBeforeBuild] = useState(true);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyReport, setVerifyReport] = useState<VerifyReport | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
 
@@ -60,9 +63,30 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
     } finally { setValidating(false); }
   }
 
+  async function handleVerify() {
+    setVerifying(true); setMsg(''); setError(''); setVerifyReport(null);
+    try {
+      const report = await problems.verify(problemId);
+      setVerifyReport(report);
+      setMsg(report.ok ? 'Verification passed' : '');
+      if (!report.ok) setError('Verification failed — see report below');
+      return report;
+    } catch (err: unknown) {
+      setError((err as Error).message);
+      return null;
+    } finally { setVerifying(false); }
+  }
+
   async function handleBuild(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(''); setError(''); setShowValidation(false);
+    setMsg(''); setError(''); setShowValidation(false); setVerifyReport(null);
+
+    // Optional full verification before packaging.
+    if (verifyBeforeBuild) {
+      const report = await handleVerify();
+      if (!report || !report.ok) return;
+    }
+
     setValidating(true);
     let errs: string[] = [];
     let warns: string[] = [];
@@ -164,10 +188,38 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
 
       <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         Build Package
-        <button type="button" className="btn btn-sm" onClick={handleValidate} disabled={validating || building} style={{ fontWeight: 'normal', fontSize: 11 }}>
-          {validating ? 'Validating…' : 'Validate Only'}
-        </button>
+        <span style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className="btn btn-sm" onClick={handleVerify} disabled={verifying || building} style={{ fontWeight: 'normal', fontSize: 11 }}>
+            {verifying ? 'Verifying…' : 'Verify'}
+          </button>
+          <button type="button" className="btn btn-sm" onClick={handleValidate} disabled={validating || building} style={{ fontWeight: 'normal', fontSize: 11 }}>
+            {validating ? 'Validating…' : 'Validate Only'}
+          </button>
+        </span>
       </div>
+
+      {verifyReport && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', border: '1px solid var(--border,#ddd)', borderRadius: 4 }}>
+          <strong style={{ color: verifyReport.ok ? 'green' : 'red' }}>
+            {verifyReport.ok ? '✓ Verification passed' : '✗ Verification failed'}
+          </strong>
+          <table className="poly-table" style={{ marginTop: 6 }}>
+            <tbody>
+              {verifyReport.steps.map((s, i) => (
+                <tr key={i}>
+                  <td style={{ width: 180, fontWeight: 600,
+                    color: s.status === 'fail' ? 'red' : s.status === 'warn' ? '#c60' : 'green' }}>
+                    {s.status === 'fail' ? '✗' : s.status === 'warn' ? '!' : '✓'} {s.name}
+                  </td>
+                  <td style={{ fontSize: 11 }}>
+                    {(s.details ?? []).map((d, k) => <div key={k}>{d}</div>)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showValidation && (
         <div style={{ marginBottom: 12, padding: '8px 12px', border: '1px solid #ddd', borderRadius: 4 }}>
@@ -206,9 +258,16 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
           <label>Comment:</label>
           <input type="text" value={comment} onChange={e => setComment(e.target.value)} style={{ width: 300 }} />
         </div>
+        <div className="form-row">
+          <label>Before build:</label>
+          <label style={{ minWidth: 0, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" checked={verifyBeforeBuild} onChange={e => setVerifyBeforeBuild(e.target.checked)} />
+            Run full verification first
+          </label>
+        </div>
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={building}>
-            {building ? 'Building...' : 'Build Package'}
+          <button type="submit" className="btn btn-primary" disabled={building || verifying}>
+            {building ? 'Building...' : verifying ? 'Verifying…' : 'Build Package'}
           </button>
         </div>
       </form>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { problems, Solution } from '../../api/client';
+import CodeEditor from '../../components/CodeEditor';
 
 interface Props { problemId: number; }
 
@@ -280,11 +281,15 @@ export default function SolutionsTab({ problemId }: Props) {
               <strong>{editSol.sol.source_path}</strong>
               <button className="btn btn-sm" onClick={() => setEditSol(null)}>Close</button>
             </div>
-            <textarea
-              value={editSol.content}
-              onChange={e => setEditSol(s => s ? { ...s, content: e.target.value } : s)}
-              style={{ flex: 1, minHeight: 400, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-            />
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <CodeEditor
+                value={editSol.content}
+                onChange={v => setEditSol(s => s ? { ...s, content: v } : s)}
+                sourceType={editSol.sol.source_type}
+                height="60vh"
+                onSave={handleSaveEdit}
+              />
+            </div>
             <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-primary" onClick={handleSaveEdit} disabled={editSaving}>
                 {editSaving ? 'Saving...' : 'Save'}
@@ -319,11 +324,11 @@ export default function SolutionsTab({ problemId }: Props) {
               </div>
               <div className="form-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
                 <label style={{ marginBottom: 4 }}>Content:</label>
-                <textarea
+                <CodeEditor
                   value={newContent}
-                  onChange={e => setNewContent(e.target.value)}
-                  style={{ fontFamily: 'monospace', fontSize: 12, minHeight: 200, resize: 'vertical' }}
-                  placeholder="Paste source code here…"
+                  onChange={setNewContent}
+                  sourceType={newLang}
+                  height={260}
                 />
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>

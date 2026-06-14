@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import JSZip from 'jszip';
 import { problems, TestPreview, TestGroup, ProblemInfo } from '../../api/client';
+import TestScriptPanel from './TestScriptPanel';
+
+// Natural sort so test10 comes after test2, not after test1.
+function naturalCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+}
+const ANSWER_EXT = /\.(a|ans|out|expected)$/i;
 
 interface Props { problemId: number; info: ProblemInfo; }
 
@@ -31,6 +39,12 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const [bulkWorking, setBulkWorking] = useState(false);
   const [moveToIdx, setMoveToIdx] = useState('');
   const lastClickedRef = useRef<number | null>(null);
+
+  // Zip import + drag-and-drop reordering
+  const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   useEffect(() => { reload(); }, [problemId]);
 
@@ -236,6 +250,56 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     finally { setBulkWorking(false); }
   }
 
+  // ── Import tests from a zip archive ───────────────────────────────────────
+  async function handleImportZip(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (zipRef.current) zipRef.current.value = '';
+    if (!file) return;
+    setMsg(''); setError('');
+    try {
+      const zip = await JSZip.loadAsync(file);
+      // Collect plain files (ignore directories and macOS metadata).
+      const entries = Object.values(zip.files).filter(f => !f.dir && !f.name.includes('__MACOSX') && !f.name.split('/').pop()!.startsWith('.'));
+      // Treat answer-looking files as answers; everything else is an input.
+      let inputs = entries.filter(f => !ANSWER_EXT.test(f.name));
+      if (inputs.length === 0) inputs = entries; // archive had only e.g. *.out — import them all
+      inputs.sort((a, b) => naturalCompare(a.name, b.name));
+      if (inputs.length === 0) { setError('No test files found in archive'); return; }
+
+      setZipProgress({ done: 0, total: inputs.length });
+      let added = 0;
+      for (const entry of inputs) {
+        const content = await entry.async('string');
+        const base = entry.name.split('/').pop() || entry.name;
+        await problems.saveTest({ problemId, method: 'manual', input: content, sample: 'false', description: base });
+        added++;
+        setZipProgress({ done: added, total: inputs.length });
+      }
+      setMsg(`Imported ${added} test(s) from ${file.name}`);
+      reload();
+    } catch (err: unknown) {
+      setError('Zip import failed: ' + (err as Error).message);
+    } finally {
+      setZipProgress(null);
+    }
+  }
+
+  // ── Drag-and-drop reordering ──────────────────────────────────────────────
+  async function handleDropReorder(targetIdx: number) {
+    const src = dragIdx;
+    setDragIdx(null); setDragOverIdx(null);
+    if (src == null || src === targetIdx) return;
+    // moveTestsTo inserts the moved test *before* position `targetIdx` (1-based
+    // over the list without the moved item); dropping below means +0, above same.
+    const target = src < targetIdx ? targetIdx : targetIdx;
+    setBulkWorking(true); setMsg(''); setError('');
+    try {
+      await problems.moveTestsTo(problemId, [src], target);
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setBulkWorking(false); }
+  }
+
   async function handleMoveTo() {
     if (!selected.size || !moveToIdx) return;
     const target = parseInt(moveToIdx);
@@ -310,11 +374,20 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
             {uploading ? 'Uploading…' : 'Upload Tests'}
             <input ref={uploadRef} type="file" multiple style={{ display: 'none' }} onChange={handleUploadTests} />
           </label>
+          <label className="btn btn-sm" style={{ cursor: 'pointer', marginBottom: 0 }}>
+            {zipProgress ? `Importing ${zipProgress.done}/${zipProgress.total}…` : 'Import zip'}
+            <input ref={zipRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleImportZip} disabled={!!zipProgress} />
+          </label>
         </div>
       </div>
+      {zipProgress && (
+        <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${Math.round(100 * zipProgress.done / zipProgress.total)}%` }} /></div>
+      )}
 
       {msg && <div className="alert alert-success">{msg}</div>}
       {error && <div className="alert alert-error">{error}</div>}
+
+      <TestScriptPanel problemId={problemId} onApplied={reload} />
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
@@ -377,6 +450,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                 />
               </th>
               <th style={{ width: 30 }}>#</th>
+              <th style={{ width: 18 }} title="Drag to reorder"></th>
               <th style={{ width: 160 }}>Content</th>
               <th style={{ width: 60 }}>Size</th>
               <th style={{ width: 120 }}>Desc</th>
@@ -393,7 +467,17 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               const row = editRows[t.idx] ?? { desc: t.description, group: t.group_name, points: String(t.points || 0) };
               const isSelected = selected.has(t.idx);
               return (
-                <tr key={t.idx} style={isSelected ? { background: '#f0f6ff' } : undefined}>
+                <tr
+                  key={t.idx}
+                  onDragOver={dragIdx != null ? (e => { e.preventDefault(); setDragOverIdx(t.idx); }) : undefined}
+                  onDrop={dragIdx != null ? (() => handleDropReorder(t.idx)) : undefined}
+                  style={{
+                    background: dragOverIdx === t.idx && dragIdx !== t.idx ? '#dbe9ff'
+                      : isSelected ? '#f0f6ff' : undefined,
+                    borderTop: dragOverIdx === t.idx && dragIdx !== t.idx ? '2px solid #4472c4' : undefined,
+                    opacity: dragIdx === t.idx ? 0.4 : 1,
+                  }}
+                >
                   <td style={{ textAlign: 'center' }}>
                     <input
                       type="checkbox"
@@ -403,6 +487,13 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                     />
                   </td>
                   <td style={{ textAlign: 'center', color: '#666' }}>{t.idx}</td>
+                  <td
+                    draggable
+                    onDragStart={() => setDragIdx(t.idx)}
+                    onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                    title="Drag to reorder"
+                    style={{ cursor: 'grab', textAlign: 'center', color: '#999', userSelect: 'none' }}
+                  >⠿</td>
                   <td>
                     {t.inputAvailable
                       ? <div className="input-preview" style={{ maxHeight: 48, fontSize: 10, cursor: 'pointer' }} onClick={() => handleViewInput(t.idx)}>{t.inputPreview}</div>
@@ -476,7 +567,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               );
             })}
             {tests.length === 0 && (
-              <tr><td colSpan={11} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
+              <tr><td colSpan={12} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
             )}
           </tbody>
         </table>

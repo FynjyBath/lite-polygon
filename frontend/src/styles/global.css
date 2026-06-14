@@ -389,3 +389,76 @@ h1, h2, h3 { font-size: 14px; margin: 8px 0; }
   max-height: 60px;
   color: #333;
 }
+
+/* ============================================================
+   Dark theme
+   The base stylesheet above is the light theme. The block below
+   overrides surfaces/colors when <html data-theme="dark">.
+   ============================================================ */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f9f9f9;
+  --border: #dddddd;
+  --fg: #222222;
+  --muted: #666666;
+}
+[data-theme="dark"] {
+  --bg: #1e1e1e;
+  --surface: #252526;
+  --surface-2: #2d2d30;
+  --border: #3e3e42;
+  --fg: #d4d4d4;
+  --muted: #9aa0a6;
+}
+
+[data-theme="dark"] body { background: var(--bg); color: var(--fg); }
+
+[data-theme="dark"] a { color: #4ea1ff; }
+
+[data-theme="dark"] .top-bar { background: #141414; }
+
+[data-theme="dark"] .problem-nav { background: #252526; border-bottom-color: #3e3e42; }
+[data-theme="dark"] .problem-nav a { color: #4ea1ff; }
+[data-theme="dark"] .problem-nav a.active { color: #fff; border-bottom-color: #4ea1ff; }
+[data-theme="dark"] .problem-nav a:hover { background: #2d2d30; }
+
+[data-theme="dark"] table.poly-table th { background: #2d2d30; border-color: #3e3e42; color: #d4d4d4; }
+[data-theme="dark"] table.poly-table td { border-color: #3a3a3d; }
+[data-theme="dark"] table.poly-table tr:nth-child(even) td { background: #2a2a2b; }
+[data-theme="dark"] table.poly-table tr:hover td { background: #323a45; }
+
+[data-theme="dark"] .btn { background: #3a3a3d; border-color: #555; color: #e0e0e0; }
+[data-theme="dark"] .btn:hover { background: #46464a; }
+[data-theme="dark"] .btn-primary { background: #3a6db5; border-color: #2a52a0; color: #fff; }
+[data-theme="dark"] .btn-primary:hover { background: #2a5699; }
+[data-theme="dark"] .btn-danger { background: #b33; border-color: #822; color: #fff; }
+
+[data-theme="dark"] input, [data-theme="dark"] textarea, [data-theme="dark"] select {
+  background: #1b1b1c; color: #d4d4d4; border-color: #3e3e42;
+}
+[data-theme="dark"] input::placeholder, [data-theme="dark"] textarea::placeholder { color: #6b7177; }
+
+[data-theme="dark"] .section-header { background: #2d2d30; border-color: #3e3e42; color: #d4d4d4; }
+[data-theme="dark"] .problem-summary { background: #252526; border-color: #3e3e42; }
+[data-theme="dark"] .problem-summary td:first-child { color: #9aa0a6; }
+[data-theme="dark"] .breadcrumb, [data-theme="dark"] .breadcrumb a { color: #9aa0a6; }
+[data-theme="dark"] .problem-header { background: #1c1c1c !important; border-bottom-color: #3e3e42 !important; }
+
+[data-theme="dark"] .code-view { background: #1b1b1b; border-color: #3e3e42; color: #d4d4d4; }
+[data-theme="dark"] .input-preview { background: #1b1b1b; border-color: #3e3e42; color: #c8c8c8; }
+
+[data-theme="dark"] .login-page { background: #252526; border-color: #3e3e42; }
+[data-theme="dark"] .cautions { background: #3a3320; border-color: #6b5d2a; color: #e8d9a0; }
+
+[data-theme="dark"] .alert-error { background: #3a2226; border-color: #7a3b42; color: #f0a8b0; }
+[data-theme="dark"] .alert-success { background: #1f3a24; border-color: #3a7a48; color: #a8e0b8; }
+[data-theme="dark"] .alert-info { background: #1f2f3a; border-color: #3a6080; color: #a8cce8; }
+
+/* Statement preview keeps a paper-like surface that adapts to the theme */
+[data-theme="dark"] .stmt-preview { background: var(--surface); color: #d4d4d4; }
+[data-theme="dark"] .stmt-title { color: #fff; border-bottom-color: #3e3e42; }
+[data-theme="dark"] .stmt-h3 { color: #c8c8c8; border-bottom-color: #3e3e42; }
+[data-theme="dark"] .stmt-example-pre, [data-theme="dark"] .lx-pre { background: #1b1b1b; border-color: #3e3e42; color: #d4d4d4; }
+[data-theme="dark"] .lx-tt { background: #2d2d30; border-color: #3e3e42; color: #d4d4d4; }
+[data-theme="dark"] .stmt-example-label { color: #9aa0a6; }

@@ -21,7 +21,9 @@ import { getProblemDir, db } from '../db/schema';
 import { safeJoin, isPlainName } from '../utils/safePath';
 import { importPackage } from '../services/import';
 import { buildPackage } from '../packages/builder';
-import { compileAsset, compileSolution, runInvocation, generateTestAnswer } from '../judging/judging';
+import { compileAsset, compileSolution, runInvocation, generateTestAnswer, generateTestInput } from '../judging/judging';
+import { expandScriptToLines } from '../services/freemarker';
+import { verifyProblem } from '../services/verify';
 import { generateProblemXml } from '../polygon-xml/generator';
 import { buildPackage as _buildPackage } from '../packages/builder';
 
@@ -889,6 +891,16 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const type = (body.type ?? 'standard') as 'standard' | 'linux' | 'windows';
     const comment = body.comment ?? '';
 
+    // Optionally verify the problem before packaging. If verification fails,
+    // refuse to build and return the report so the user can fix issues first.
+    const shouldVerify = String(body.verify ?? '') === 'true';
+    if (shouldVerify) {
+      const report = await verifyProblem(id);
+      if (!report.ok) {
+        return reply.code(400).send({ status: 'FAILED', comment: 'Verification failed', result: { verify: report } });
+      }
+    }
+
     const result = db.prepare(
       "INSERT INTO packages (problem_id, revision, type, state, comment) VALUES (?, ?, ?, 'PENDING', ?)"
     ).run(id, problem.revision, type, comment);
@@ -900,6 +912,17 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return ok({ packageId, state: 'PENDING' });
+  });
+
+  // problem.verify - run the full verification pipeline and return a report
+  app.post('/api/problem.verify', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number };
+    const id = parseInt(String(body.problemId ?? ''));
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    const report = await verifyProblem(id);
+    return ok(report);
   });
 
   // problem.package - download
@@ -1446,6 +1469,111 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
 
     updateProblem(id, { modified: 1 });
     return ok({ count: newOrder.length });
+  });
+
+  // problem.testScript - get the saved generator/test script
+  app.get('/api/problem.testScript', async (req, reply) => {
+    const user = await auth(req, reply);
+    const id = parseInt((req.query as { problemId?: string }).problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    return ok({ script: getProperty(id, 'test_script') ?? '' });
+  });
+
+  // problem.saveTestScript - persist the script text
+  app.post('/api/problem.saveTestScript', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; script?: string };
+    const id = parseInt(String(body.problemId ?? ''));
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    setProperty(id, 'test_script', body.script ?? '');
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
+
+  // problem.expandTestScript - expand FreeMarker into concrete command lines (preview)
+  app.post('/api/problem.expandTestScript', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; script?: string };
+    const id = parseInt(String(body.problemId ?? ''));
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    try {
+      const lines = expandScriptToLines(body.script ?? '');
+      return ok({ lines, count: lines.length });
+    } catch (e: unknown) {
+      return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
+    }
+  });
+
+  // problem.applyTestScript - create generated tests from the expanded script
+  app.post('/api/problem.applyTestScript', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; script?: string; mode?: 'append' | 'replace' };
+    const id = parseInt(String(body.problemId ?? ''));
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!getProblemForUser(id, user, reply)) return;
+
+    let lines: string[];
+    try { lines = expandScriptToLines(body.script ?? ''); }
+    catch (e: unknown) { return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message }); }
+    if (!lines.length) return reply.code(400).send({ status: 'FAILED', comment: 'Script produced no test lines' });
+
+    const testset = getOrCreateTestset(id, 'tests');
+    setProperty(id, 'test_script', body.script ?? '');
+
+    if (body.mode === 'replace') {
+      // Drop existing *generated* tests (manual tests are kept) and their files.
+      const problemDir = getProblemDir(id);
+      const existing = listTests(testset.id);
+      for (const t of existing) {
+        if (t.method !== 'generated') continue;
+        const n = String(t.idx).padStart(2, '0');
+        for (const pat of [testset.input_path_pattern, testset.answer_path_pattern]) {
+          const f = path.join(problemDir, pat.replace('%02d', n));
+          if (fs.existsSync(f)) fs.unlinkSync(f);
+        }
+      }
+      db.prepare("DELETE FROM tests WHERE testset_id = ? AND method = 'generated'").run(testset.id);
+      // Re-pack indices so they are contiguous starting at 1.
+      const remaining = listTests(testset.id);
+      db.transaction(() => {
+        const off = remaining.length + 100000;
+        db.prepare('UPDATE tests SET idx = idx + ? WHERE testset_id = ?').run(off, testset.id);
+        remaining.forEach((t, k) => db.prepare('UPDATE tests SET idx = ? WHERE id = ?').run(k + 1, t.id));
+      })();
+    }
+
+    let nextIdx = (listTests(testset.id).at(-1)?.idx ?? 0) + 1;
+    for (const line of lines) {
+      upsertTest(testset.id, nextIdx, { method: 'generated', cmd: line, description: line });
+      nextIdx++;
+    }
+    updateProblem(id, { modified: 1 });
+    return ok({ count: lines.length });
+  });
+
+  // problem.previewScriptLine - run a single generator command and return its output
+  app.post('/api/problem.previewScriptLine', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; line?: string };
+    const id = parseInt(String(body.problemId ?? ''));
+    if (!id || !body.line) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and line required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    const testset = getOrCreateTestset(id, 'tests');
+    // Use a scratch test slot far past the real range so we never disturb data.
+    const scratchIdx = 900000 + Math.floor(Math.random() * 90000);
+    upsertTest(testset.id, scratchIdx, { method: 'generated', cmd: body.line, description: 'preview' });
+    try {
+      const gen = await generateTestInput(id, testset.id, scratchIdx);
+      if (!gen.success) return reply.code(400).send({ status: 'FAILED', comment: gen.error });
+      const data = fs.readFileSync(gen.inputPath);
+      const text = data.slice(0, 4000).toString('utf-8');
+      return ok({ preview: text, truncated: data.length > 4000, size: data.length });
+    } finally {
+      db.prepare('DELETE FROM tests WHERE testset_id = ? AND idx = ?').run(testset.id, scratchIdx);
+    }
   });
 
   // problem.validate

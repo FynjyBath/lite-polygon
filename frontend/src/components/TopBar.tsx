@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../App';
+import { useAuth, useTheme } from '../App';
 import { auth } from '../api/client';
 
 export default function TopBar() {
   const { user, setUser } = useAuth();
+  const { theme, toggle } = useTheme();
   const navigate = useNavigate();
 
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -53,6 +54,14 @@ export default function TopBar() {
           <>
             <Link to="/" style={{ color: '#aad4ff', fontSize: 12 }}>Problems</Link>
             <div className="user-info">
+              <button
+                onClick={toggle}
+                className="btn btn-sm"
+                title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                style={{ fontSize: 13, background: '#444', border: '1px solid #777', color: '#ddd', cursor: 'pointer', marginRight: 8, lineHeight: 1 }}
+              >
+                {theme === 'dark' ? '☀' : '☾'}
+              </button>
               <span style={{ marginRight: 8 }}>{user.username}</span>
               <button
                 onClick={openChangePwd}

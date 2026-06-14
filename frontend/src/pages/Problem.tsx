@@ -74,7 +74,7 @@ export default function ProblemPage() {
           ✓ Changes committed successfully
         </div>
       )}
-      <div style={{ padding: '8px 16px', borderBottom: '1px solid #ddd', background: '#f9f9f9' }}>
+      <div className="problem-header" style={{ padding: '8px 16px', borderBottom: '1px solid #ddd', background: '#f9f9f9' }}>
         <div className="breadcrumb">
           <Link to="/">Problems</Link> &rsaquo; {info.shortName}
           {info.modified ? <span style={{ color: '#c60', marginLeft: 8 }}>[modified]</span> : ''}
