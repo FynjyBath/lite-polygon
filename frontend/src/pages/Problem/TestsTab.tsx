@@ -362,7 +362,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const someSelected = selected.size > 0 && !allSelected;
 
   return (
-    <div>
+    <div style={{ paddingBottom: selected.size > 0 ? 64 : 0 }}>
       {/* Header */}
       <div className="flex-between" style={{ marginBottom: 8 }}>
         <h2>Tests ({tests.length})</h2>
@@ -389,12 +389,17 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
 
       <TestScriptPanel problemId={problemId} onApplied={reload} />
 
-      {/* Bulk action bar */}
+      {/* Bulk action bar — floats at the bottom of the viewport so it is
+          reachable without scrolling back to the top of the page */}
       {selected.size > 0 && (
         <div style={{
           display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
-          padding: '6px 10px', background: '#eef4ff', border: '1px solid #c8d8f8',
-          borderRadius: 4, marginBottom: 8, fontSize: 12,
+          padding: '8px 14px', background: 'var(--surface-2, #eef4ff)',
+          border: '1px solid var(--border, #c8d8f8)',
+          borderRadius: 8, fontSize: 12,
+          position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)',
+          zIndex: 900, maxWidth: 'calc(100vw - 32px)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
         }}>
           <strong style={{ color: '#2264b0' }}>{selected.size} selected:</strong>
           <button className="btn btn-sm" onClick={() => bulkSetSample(true)} disabled={bulkWorking}>→ Sample</button>

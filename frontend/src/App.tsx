@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { auth } from './api/client';
 import TopBar from './components/TopBar';
+import ScrollMemory from './components/ScrollMemory';
 import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
 import ProblemsPage from './pages/Problems';
@@ -53,6 +54,7 @@ export default function App() {
   return (
     <ThemeContext.Provider value={themeCtx}>
     <AuthContext.Provider value={{ user, setUser, loading }}>
+      <ScrollMemory />
       <TopBar />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
