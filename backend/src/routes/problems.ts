@@ -1218,6 +1218,39 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     updateProblem(id, { modified: 1 });
     return ok({ name: data.filename });
   });
+
+  // problem.rename
+  app.post('/api/problem.rename', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId, newName } = req.body as { problemId?: string | number; newName?: string };
+    const id = parseInt(String(problemId ?? ''));
+    if (!id || !newName) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and newName required' });
+    if (!/^[a-zA-Z0-9_\-\.]+$/.test(newName)) {
+      return reply.code(400).send({ status: 'FAILED', comment: 'Invalid name; only letters, digits, _, -, . allowed' });
+    }
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const existing = getProblemByName(newName, user.id);
+    if (existing && existing.id !== id) {
+      return reply.code(409).send({ status: 'FAILED', comment: 'A problem with that name already exists' });
+    }
+    updateProblem(id, { short_name: newName, modified: 1 });
+    return ok(null);
+  });
+
+  // problem.deleteStatement
+  app.post('/api/problem.deleteStatement', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId, lang } = req.body as { problemId?: string | number; lang?: string };
+    const id = parseInt(String(problemId ?? ''));
+    if (!id || !lang) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and lang required' });
+    if (!getProblemForUser(id, user.id, reply)) return;
+    db.prepare('DELETE FROM statements WHERE problem_id = ? AND language = ?').run(id, lang);
+    const problemDir = getProblemDir(id);
+    const sectionsDir = path.join(problemDir, 'statement-sections', lang);
+    if (fs.existsSync(sectionsDir)) fs.rmSync(sectionsDir, { recursive: true, force: true });
+    updateProblem(id, { modified: 1 });
+    return ok(null);
+  });
 }
 
 function escHtml(s: string): string {

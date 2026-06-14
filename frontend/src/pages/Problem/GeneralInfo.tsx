@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { problems, ProblemInfo } from '../../api/client';
 
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
 
 export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
+  const navigate = useNavigate();
   const [name, setName] = useState(info.names[0]?.value ?? '');
   const [lang, setLang] = useState(info.names[0]?.language ?? 'russian');
   const [timeLimit, setTimeLimit] = useState(String(info.timeLimit));
@@ -14,6 +16,13 @@ export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
   const [runCount, setRunCount] = useState(String(info.runCount));
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+
+  // Rename state
+  const [newShortName, setNewShortName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
+  // Delete state
+  const [deleting, setDeleting] = useState(false);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +43,34 @@ export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
       onUpdate();
     } catch (err: unknown) {
       setError((err as Error).message);
+    }
+  }
+
+  async function handleRename() {
+    const trimmed = newShortName.trim();
+    if (!trimmed) return;
+    setRenaming(true); setMsg(''); setError('');
+    try {
+      await problems.rename(problemId, trimmed);
+      setMsg(`Renamed to "${trimmed}"`);
+      setNewShortName('');
+      onUpdate();
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete problem "${info.shortName}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await problems.delete(problemId);
+      navigate('/');
+    } catch (err: unknown) {
+      setError((err as Error).message);
+      setDeleting(false);
     }
   }
 
@@ -103,6 +140,42 @@ export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
             {info.names.length === 0 && <tr><td colSpan={2} style={{ color: '#888' }}>No names set</td></tr>}
           </tbody>
         </table>
+      </div>
+
+      <hr style={{ margin: '16px 0' }} />
+      <div>
+        <strong>Rename problem:</strong>
+        <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
+          <input
+            type="text"
+            value={newShortName}
+            onChange={e => setNewShortName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleRename()}
+            placeholder={info.shortName}
+            style={{ width: 200 }}
+          />
+          <button
+            type="button"
+            className="btn"
+            onClick={handleRename}
+            disabled={renaming || !newShortName.trim()}
+          >
+            {renaming ? 'Renaming...' : 'Rename'}
+          </button>
+        </div>
+      </div>
+
+      <hr style={{ margin: '16px 0' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? 'Deleting...' : 'Delete Problem'}
+        </button>
+        <span style={{ color: '#888', fontSize: 11 }}>Permanently deletes the problem and all its data.</span>
       </div>
     </div>
   );

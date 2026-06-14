@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { problems, Invocation, InvocationRun, Solution } from '../../api/client';
 
 interface Props { problemId: number; testsCount: number; solutionsCount: number; }
@@ -12,10 +12,18 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount }
   const [error, setError] = useState('');
   const [polling, setPolling] = useState(false);
   const [pollingRuns, setPollingRuns] = useState(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     problems.solutions(problemId).then(setSolutions);
-    reload();
+    problems.invocations(problemId).then(invs => {
+      setInvocations(invs);
+      // Auto-resume polling if any invocation is still running
+      const running = invs.find(i => i.state === 'RUNNING');
+      if (running) pollInvocation(running.id);
+    }).catch(e => setError(e.message));
+    return () => { mountedRef.current = false; };
   }, [problemId]);
 
   function reload() {
@@ -36,15 +44,17 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount }
   }
 
   async function pollInvocation(invId: number) {
+    if (!mountedRef.current) return;
     setPolling(true);
     setPollingRuns(0);
     let attempts = 0;
-    while (attempts < 120) {
+    while (attempts < 180) {
       await new Promise(r => setTimeout(r, 2000));
+      if (!mountedRef.current) break;
       try {
         const result = await problems.invocationResults(problemId, invId);
+        if (!mountedRef.current) break;
         setPollingRuns(result.runs.length);
-        // Update matrix live as runs come in
         const inv = invocations.find(i => i.id === invId)
           ?? { id: invId, state: result.state, testset_name: 'tests', created_at: '' };
         setActive({ inv: { ...inv, state: result.state }, runs: result.runs });
@@ -58,8 +68,10 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount }
       } catch { break; }
       attempts++;
     }
-    setPolling(false);
-    setPollingRuns(0);
+    if (mountedRef.current) {
+      setPolling(false);
+      setPollingRuns(0);
+    }
   }
 
   async function handleView(inv: Invocation) {
@@ -146,6 +158,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount }
               <td style={{ fontSize: 11 }}>{inv.created_at.slice(0, 16)}</td>
               <td style={{ color: inv.state === 'DONE' ? 'green' : inv.state === 'FAILED' ? 'red' : '#c60' }}>
                 {inv.state}
+                {polling && inv.state === 'RUNNING' && <span className="spinner" style={{ marginLeft: 4 }} />}
               </td>
               <td><button className="btn btn-sm" onClick={() => handleView(inv)}>View</button></td>
             </tr>

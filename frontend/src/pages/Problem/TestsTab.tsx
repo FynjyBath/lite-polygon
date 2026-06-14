@@ -20,10 +20,15 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const [uploading, setUploading] = useState(false);
   const [newTest, setNewTest] = useState({ method: 'manual', input: '', cmd: '', description: '', sample: false, group: '', points: '0' });
   const [newGroup, setNewGroup] = useState({ name: '', points: '0', pointsPolicy: 'complete-group', feedbackPolicy: 'icpc', dependencies: '' });
-  const [editingGroup, setEditingGroup] = useState<{ id: number; field: string } | null>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const uploadRef = useRef<HTMLInputElement>(null);
+
+  // Multi-select state
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkGroup, setBulkGroup] = useState('');
+  const [bulkPoints, setBulkPoints] = useState('');
+  const [bulkWorking, setBulkWorking] = useState(false);
 
   useEffect(() => { reload(); }, [problemId]);
 
@@ -142,6 +147,75 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     } catch (err: unknown) { setError((err as Error).message); }
   }
 
+  // ── Multi-select ──────────────────────────────────────────────────────────
+  function toggleSelect(idx: number) {
+    setSelected(s => {
+      const next = new Set(s);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === tests.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(tests.map(t => t.idx)));
+    }
+  }
+
+  // ── Bulk operations ───────────────────────────────────────────────────────
+  async function bulkSetSample(value: boolean) {
+    if (!selected.size) return;
+    setBulkWorking(true); setMsg(''); setError('');
+    try {
+      await Promise.all([...selected].map(idx => problems.updateTest(problemId, idx, { sample: value })));
+      setMsg(`Set sample=${value} for ${selected.size} test(s)`);
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setBulkWorking(false); }
+  }
+
+  async function bulkSetGroup() {
+    if (!selected.size) return;
+    setBulkWorking(true); setMsg(''); setError('');
+    try {
+      await Promise.all([...selected].map(idx => problems.updateTest(problemId, idx, { group: bulkGroup })));
+      setMsg(`Set group="${bulkGroup}" for ${selected.size} test(s)`);
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setBulkWorking(false); }
+  }
+
+  async function bulkSetPoints() {
+    if (!selected.size) return;
+    const pts = parseFloat(bulkPoints) || 0;
+    setBulkWorking(true); setMsg(''); setError('');
+    try {
+      await Promise.all([...selected].map(idx => problems.updateTest(problemId, idx, { points: pts })));
+      setMsg(`Set points=${pts} for ${selected.size} test(s)`);
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setBulkWorking(false); }
+  }
+
+  async function bulkDelete() {
+    if (!selected.size) return;
+    if (!confirm(`Delete ${selected.size} selected test(s)?`)) return;
+    setBulkWorking(true); setMsg(''); setError('');
+    // Delete from highest index first to avoid index shifts
+    const sorted = [...selected].sort((a, b) => b - a);
+    try {
+      for (const idx of sorted) {
+        await problems.deleteTest(problemId, idx);
+      }
+      setMsg(`Deleted ${sorted.length} test(s)`);
+      setSelected(new Set());
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setBulkWorking(false); }
+  }
+
   // ── Groups ────────────────────────────────────────────────────────────────
   async function handleSaveGroup(e: React.FormEvent) {
     e.preventDefault(); setMsg(''); setError('');
@@ -157,7 +231,6 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   }
 
   async function updateGroupField(g: TestGroup, field: string, value: string) {
-    setEditingGroup(null);
     try {
       const patch: Record<string, string | number> = { problemId, groupName: g.name };
       if (field === 'points') patch.points = value;
@@ -185,12 +258,8 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     } catch (err: unknown) { setError((err as Error).message); }
   }
 
-  // Count tests per group
-  const testsPerGroup: Record<string, number> = {};
-  for (const t of tests) {
-    const key = t.group_name || '(none)';
-    testsPerGroup[key] = (testsPerGroup[key] || 0) + 1;
-  }
+  const allSelected = tests.length > 0 && selected.size === tests.length;
+  const someSelected = selected.size > 0 && !allSelected;
 
   return (
     <div>
@@ -211,11 +280,54 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
       {msg && <div className="alert alert-success">{msg}</div>}
       {error && <div className="alert alert-error">{error}</div>}
 
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+          padding: '6px 10px', background: '#eef4ff', border: '1px solid #c8d8f8',
+          borderRadius: 4, marginBottom: 8, fontSize: 12,
+        }}>
+          <strong style={{ color: '#2264b0' }}>{selected.size} selected:</strong>
+          <button className="btn btn-sm" onClick={() => bulkSetSample(true)} disabled={bulkWorking}>→ Sample</button>
+          <button className="btn btn-sm" onClick={() => bulkSetSample(false)} disabled={bulkWorking}>→ Not Sample</button>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Group:
+            <input
+              value={bulkGroup}
+              onChange={e => setBulkGroup(e.target.value)}
+              style={{ width: 60, fontSize: 12, padding: '1px 4px', border: '1px solid #aaa' }}
+            />
+            <button className="btn btn-sm" onClick={bulkSetGroup} disabled={bulkWorking}>Apply</button>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Points:
+            <input
+              type="number"
+              value={bulkPoints}
+              onChange={e => setBulkPoints(e.target.value)}
+              style={{ width: 60, fontSize: 12, padding: '1px 4px', border: '1px solid #aaa' }}
+            />
+            <button className="btn btn-sm" onClick={bulkSetPoints} disabled={bulkWorking}>Apply</button>
+          </span>
+          <button className="btn btn-sm btn-danger" onClick={bulkDelete} disabled={bulkWorking}>Delete</button>
+          <button className="btn btn-sm" onClick={() => setSelected(new Set())} style={{ marginLeft: 4 }}>✕ Clear</button>
+        </div>
+      )}
+
       {/* Tests table */}
       <div style={{ overflowX: 'auto', marginBottom: 16 }}>
-        <table className="poly-table" style={{ minWidth: 700 }}>
+        <table className="poly-table" style={{ minWidth: 720 }}>
           <thead>
             <tr>
+              <th style={{ width: 28 }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={el => { if (el) el.indeterminate = someSelected; }}
+                  onChange={toggleSelectAll}
+                  title="Select all"
+                />
+              </th>
               <th style={{ width: 30 }}>#</th>
               <th style={{ width: 160 }}>Content</th>
               <th style={{ width: 60 }}>Size</th>
@@ -231,8 +343,16 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
           <tbody>
             {tests.map((t, i) => {
               const row = editRows[t.idx] ?? { desc: t.description, group: t.group_name, points: String(t.points || 0) };
+              const isSelected = selected.has(t.idx);
               return (
-                <tr key={t.idx}>
+                <tr key={t.idx} style={isSelected ? { background: '#f0f6ff' } : undefined}>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(t.idx)}
+                    />
+                  </td>
                   <td style={{ textAlign: 'center', color: '#666' }}>{t.idx}</td>
                   <td>
                     {t.inputAvailable
@@ -251,7 +371,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <button
-                      className={`btn btn-sm${t.sample ? '' : ''}`}
+                      className="btn btn-sm"
                       style={{
                         padding: '1px 6px', fontSize: 11,
                         background: t.sample ? '#efe' : '#f4f4f4',
@@ -307,7 +427,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               );
             })}
             {tests.length === 0 && (
-              <tr><td colSpan={10} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
+              <tr><td colSpan={11} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
             )}
           </tbody>
         </table>

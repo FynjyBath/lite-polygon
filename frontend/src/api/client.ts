@@ -143,6 +143,8 @@ export const problems = {
   generalDescription: (problemId: number) => get<string>('problem.viewGeneralDescription', { problemId }),
   generalTutorial: (problemId: number) => get<string>('problem.viewGeneralTutorial', { problemId }),
   commitChanges: (problemId: number) => post<null>('problem.commitChanges', { problemId }),
+  rename: (problemId: number, newName: string) => post<null>('problem.rename', { problemId, newName }),
+  deleteStatement: (problemId: number, lang: string) => post<null>('problem.deleteStatement', { problemId, lang }),
   statementResources: (problemId: number, lang: string) =>
     get<string[]>('problem.statementResources', { problemId, lang }),
   saveStatementResource: (problemId: number, lang: string, file: File): Promise<{ name: string }> => {

@@ -15,7 +15,16 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
   const startTimeRef = useRef(0);
 
   useEffect(() => {
-    reload();
+    // Load packages; if any are in-progress, auto-resume the timer and poll
+    problems.packages(problemId).then(pkgs => {
+      setPackages(pkgs);
+      const inProgress = pkgs.find(p => p.state === 'PENDING' || p.state === 'RUNNING');
+      if (inProgress) {
+        setBuilding(true);
+        startTimer();
+        pollPackage(inProgress.id);
+      }
+    }).catch(e => setError(e.message));
     return () => stopTimer();
   }, [problemId]);
 
@@ -97,7 +106,12 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
               <td>{p.id}</td>
               <td>{p.type}</td>
               <td>{p.revision}</td>
-              <td style={{ color: stateColor(p.state), fontWeight: 'bold' }}>{p.state}</td>
+              <td style={{ color: stateColor(p.state), fontWeight: 'bold' }}>
+                {p.state}
+                {building && (p.state === 'RUNNING' || p.state === 'PENDING') && (
+                  <span className="spinner" style={{ marginLeft: 4 }} />
+                )}
+              </td>
               <td>{p.comment}</td>
               <td style={{ fontSize: 11 }}>{p.created_at.slice(0, 16)}</td>
               <td>
