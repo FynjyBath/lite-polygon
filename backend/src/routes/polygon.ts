@@ -340,10 +340,12 @@ async function pushToPolygon(
     await tryStep('Prepare test slots', async () => {
       for (const test of tests) {
         if (test.method === 'generated') continue;
-        await polygonPost('problem.saveTest', {
+        const p: Record<string, string> = {
           problemId: pid, testset: 'tests', testIndex: String(test.idx),
           testInput: `__placeholder_${test.idx}__`,
-        }, key, secret);
+        };
+        if (test.description) p.testDescription = String(test.description);
+        await polygonPost('problem.saveTest', p, key, secret);
       }
     });
 
@@ -363,7 +365,7 @@ async function pushToPolygon(
           testInput: input,
         };
         if (groupsEnabled && test.group_name) testParams.testGroup = String(test.group_name);
-        if (test.description) testParams.description = String(test.description);
+        if (test.description) testParams.testDescription = String(test.description);
         // Push points for any test that has them (for EACH_TEST per test; for
         // COMPLETE_GROUP Polygon stores the total on the last test of the group)
         if (pointsEnabled && (test.points as number) > 0) {
