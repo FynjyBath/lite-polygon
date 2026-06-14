@@ -1,8 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { db, getProblemDir } from '../db/schema';
 import { getAsset, listSolutions, listTests, getTestset, getSolution } from '../services/problems';
 import { compileSource, runBinary, runChecker, isCompilable } from './compiler';
+import { STD_CHECKERS } from './stdCheckers';
 
 // Number of test runs executed in parallel. Tune with the INVOCATION_WORKERS
 // environment variable (see README). Default is 4, which suits a 6-core machine.
@@ -78,6 +80,25 @@ export async function compileAsset(problemId: number, assetType: string): Promis
   }
 
   const problemDir = getProblemDir(problemId);
+  const workdir = path.join(problemDir, 'workdir');
+  fs.mkdirSync(workdir, { recursive: true });
+  const outputPath = path.join(workdir, `${assetType}_${problemId}`);
+
+  // Handle standard (testlib) checkers — use embedded minimal implementations
+  if (assetType === 'checker' && asset.source_path.startsWith('std::')) {
+    const src = STD_CHECKERS[asset.source_path];
+    if (!src) return { success: false, error: `Unknown standard checker: ${asset.source_path}` };
+    const tmpSrc = path.join(os.tmpdir(), `stdchecker_${asset.source_path.replace(/[^a-z0-9.]/g, '_')}.cpp`);
+    fs.writeFileSync(tmpSrc, src, 'utf-8');
+    const result = await compileSource(tmpSrc, 'cpp.g++17', outputPath);
+    if (result.success) {
+      db.prepare('UPDATE assets SET compiled_binary = ? WHERE problem_id = ? AND asset_type = ?')
+        .run(outputPath, problemId, assetType);
+      return { success: true, error: '' };
+    }
+    return { success: false, error: result.stderr };
+  }
+
   const sourcePath = path.join(problemDir, asset.source_path);
   if (!fs.existsSync(sourcePath)) {
     return { success: false, error: `Source not found: ${asset.source_path}` };
@@ -86,10 +107,6 @@ export async function compileAsset(problemId: number, assetType: string): Promis
   if (!isCompilable(asset.source_type)) {
     return { success: false, error: `Unsupported source type: ${asset.source_type}` };
   }
-
-  const workdir = path.join(problemDir, 'workdir');
-  fs.mkdirSync(workdir, { recursive: true });
-  const outputPath = path.join(workdir, `${assetType}_${problemId}`);
 
   const result = await compileSource(sourcePath, asset.source_type, outputPath);
   if (result.success) {

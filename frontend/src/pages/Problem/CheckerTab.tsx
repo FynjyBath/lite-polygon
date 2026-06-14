@@ -4,17 +4,17 @@ import { problems, Asset, ProblemInfo, CheckerTest } from '../../api/client';
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
 
 const STANDARD_CHECKERS = [
-  { name: 'std::ncmp.cpp', desc: 'Sequence of long long integers' },
-  { name: 'std::wcmp.cpp', desc: 'Sequence of tokens (case-sensitive)' },
-  { name: 'std::nyesno.cpp', desc: 'YES or NO (single token)' },
-  { name: 'std::yesno.cpp', desc: 'YES or NO (line)' },
-  { name: 'std::fcmp.cpp', desc: 'Sequence of lines (strict)' },
-  { name: 'std::lcmp.cpp', desc: 'Tokens, line by line' },
-  { name: 'std::rcmp.cpp', desc: 'Real numbers (1e-6 tolerance)' },
+  { name: 'std::ncmp.cpp',  desc: 'Sequence of integers (long long)' },
+  { name: 'std::icmp.cpp',  desc: 'Single integer' },
+  { name: 'std::wcmp.cpp',  desc: 'Sequence of tokens (case-sensitive)' },
+  { name: 'std::yesno.cpp', desc: 'Single YES or NO (case-insensitive)' },
+  { name: 'std::nyesno.cpp',desc: 'N lines of YES or NO (case-insensitive)' },
+  { name: 'std::fcmp.cpp',  desc: 'Lines of tokens (flexible whitespace)' },
+  { name: 'std::lcmp.cpp',  desc: 'Lines (trim trailing whitespace)' },
+  { name: 'std::rcmp.cpp',  desc: 'Real numbers (1e-6 tolerance)' },
   { name: 'std::rcmp4.cpp', desc: 'Real numbers (1e-4 tolerance)' },
   { name: 'std::rcmp6.cpp', desc: 'Real numbers (1e-6 tolerance)' },
   { name: 'std::rcmp9.cpp', desc: 'Real numbers (1e-9 tolerance)' },
-  { name: 'std::icmp.cpp', desc: 'Integer comparison' },
 ];
 
 export default function CheckerTab({ problemId, info, onUpdate }: Props) {

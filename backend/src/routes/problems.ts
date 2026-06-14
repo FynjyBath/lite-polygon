@@ -1318,7 +1318,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const checker = getAsset(id, 'checker');
     if (!checker || !checker.source_path) {
       errors.push('No checker: set a checker on the Checker tab');
-    } else {
+    } else if (!checker.source_path.startsWith('std::')) {
       const checkerSrc = path.join(problemDir, checker.source_path);
       if (!fs.existsSync(checkerSrc) && !checker.binary_path) {
         warnings.push(`Checker source not found on disk: ${checker.source_path}`);

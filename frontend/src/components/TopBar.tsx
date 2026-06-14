@@ -30,7 +30,7 @@ export default function TopBar() {
   async function handleChangePwd(e: React.FormEvent) {
     e.preventDefault();
     if (newPwd !== confirmPwd) { setPwdError('New passwords do not match'); return; }
-    if (newPwd.length < 4) { setPwdError('New password must be at least 4 characters'); return; }
+    if (newPwd.length < 6) { setPwdError('New password must be at least 6 characters'); return; }
     setPwdLoading(true); setPwdError('');
     try {
       await auth.changePassword(currentPwd, newPwd);
