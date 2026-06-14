@@ -423,7 +423,7 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
     // Create on Polygon
     let pgId: number;
     try {
-      const created = await polygonPost('problems.create', { name: pgName }, key, secret) as { id?: number; problemId?: number };
+      const created = await polygonPost('problem.create', { name: pgName }, key, secret) as { id?: number; problemId?: number };
       pgId = created.id ?? created.problemId ?? 0;
       if (!pgId) throw new Error('Polygon did not return a problem ID');
     } catch (e: unknown) {
