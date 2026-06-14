@@ -165,7 +165,7 @@ All four packages import without errors. Round-trip (import → export → impor
 | Statement viewer | Rendered HTML with MathJax | Plain text preview |
 | Checker name lookup | Resolves `std::wcmp.cpp` etc. from testlib distribution | Stored as given; no testlib bundled |
 | Windows `.exe` binaries | Compiled on Windows | Not compiled; stored from package as-is |
-| Invocation parallelism | Parallel across servers | Sequential in single process |
+| Invocation parallelism | Parallel across servers | Parallel within one process (`INVOCATION_WORKERS`, default 4) |
 | Stress testing | Fully automated compare loop | UI for managing stress configurations; loop not yet automated |
 | Review/messages | Collaborative review workflow | Not implemented |
 | Problem sharing | Configurable roles | Not implemented (single owner) |

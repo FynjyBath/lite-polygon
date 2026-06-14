@@ -60,11 +60,24 @@ The server listens on `http://localhost:5000` by default.
 | `HOST` | `0.0.0.0` | Bind address |
 | `DATA_DIR` | `../data` | Directory for SQLite DB, problem files, packages |
 | `FRONTEND_DIST` | `../frontend/dist` | Path to built frontend |
+| `INVOCATION_WORKERS` | `4` | Parallel test runs per invocation. Set to `nproc - 2` for best results (e.g. `6` on an 8-core machine). Higher values speed up large invocations but reduce per-test timing accuracy. |
 
 Example:
 
 ```bash
-DATA_DIR=/srv/lite-polygon-data PORT=8080 npm start
+DATA_DIR=/srv/lite-polygon-data PORT=8080 INVOCATION_WORKERS=6 npm start
+```
+
+To change `INVOCATION_WORKERS` on a systemd deployment, edit `/etc/systemd/system/lite-polygon.service`:
+
+```ini
+Environment=INVOCATION_WORKERS=4
+```
+
+Then reload and restart:
+
+```bash
+systemctl daemon-reload && systemctl restart lite-polygon
 ```
 
 ---
@@ -279,7 +292,7 @@ backend/src/
   services/problems.ts  Problem/test/solution CRUD
   services/import.ts    Polygon package import
   judging/compiler.ts   Compile + run binaries
-  judging/judging.ts    Invocations, test generation
+  judging/judging.ts    Invocations, test generation (parallel via INVOCATION_WORKERS)
   packages/builder.ts   Package ZIP assembly
   polygon-xml/          parser.ts · generator.ts · types.ts
   utils/apiSig.ts       Polygon apiSig sign/verify

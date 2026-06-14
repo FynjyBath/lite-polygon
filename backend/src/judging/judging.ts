@@ -4,6 +4,10 @@ import { db, getProblemDir } from '../db/schema';
 import { getAsset, listSolutions, listTests, getTestset, getSolution } from '../services/problems';
 import { compileSource, runBinary, runChecker, isCompilable } from './compiler';
 
+// Number of test runs executed in parallel. Tune with the INVOCATION_WORKERS
+// environment variable (see README). Default is 4, which suits a 6-core machine.
+const PARALLEL_WORKERS = parseInt(process.env.INVOCATION_WORKERS ?? '4');
+
 interface JudgeTestResult {
   testIdx: number;
   verdict: string;
@@ -22,6 +26,24 @@ interface SolutionJudgeResult {
   compiledOk: boolean;
   compileError: string;
   testResults: JudgeTestResult[];
+}
+
+// Simple worker pool: runs fn over items with at most `concurrency` in flight at once.
+// Safe in Node.js because `idx++` is atomic between async suspension points.
+async function runPool<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (idx < items.length) {
+      const item = items[idx++];
+      await fn(item);
+    }
+  });
+  await Promise.all(workers);
 }
 
 export async function compileSolution(problemId: number, solutionId: number): Promise<{ success: boolean; error: string }> {
@@ -105,15 +127,11 @@ export async function generateTestInput(
   const execs = db.prepare('SELECT * FROM executables WHERE problem_id = ?').all(problemId) as Array<{
     source_path: string; source_type: string; binary_path: string; binary_type: string;
   }>;
-  const problemFiles = db.prepare('SELECT * FROM problem_files WHERE problem_id = ?').all(problemId) as Array<{
-    path: string; file_role: string; source_type: string;
-  }>;
 
   // Try to find compiled generator
   let genBinary = '';
   for (const e of execs) {
     if (e.source_path && path.basename(e.source_path, path.extname(e.source_path)) === genName) {
-      // Check if compiled
       const compiledKey = `gen_${problemId}_${genName}`;
       const workBinary = path.join(problemDir, 'workdir', compiledKey);
       if (!fs.existsSync(workBinary)) {
@@ -187,6 +205,9 @@ export async function generateTestAnswer(
   return { success: true, answerPath, error: '' };
 }
 
+const INSERT_RUN =
+  'INSERT INTO invocation_runs (invocation_id, solution_id, test_idx, verdict, time_ms, memory_bytes, exit_code, stderr_preview, stdout_preview, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+
 export async function runInvocation(
   problemId: number,
   invocationId: number,
@@ -207,122 +228,123 @@ export async function runInvocation(
     const memLimitBytes = testset.memory_limit ?? 268435456;
     const tests = listTests(testset.id);
 
-    // Compile checker
+    // Phase 1: Pre-generate all missing test inputs sequentially to avoid
+    // concurrent generator-compilation races.
+    for (const t of tests) {
+      const testNum = String(t.idx).padStart(2, '0');
+      const inputFile = path.join(problemDir, testset.input_path_pattern.replace('%02d', testNum));
+      if (!fs.existsSync(inputFile) && t.method === 'generated' && t.cmd) {
+        const genResult = await generateTestInput(problemId, testset.id, t.idx);
+        if (genResult.success) {
+          fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+          fs.copyFileSync(genResult.inputPath, inputFile);
+        }
+      }
+    }
+
+    // Phase 2: Compile checker.
     const checker = getAsset(problemId, 'checker');
     let checkerBinary = checker?.compiled_binary || '';
     if (checker && checker.source_path && (!checkerBinary || !fs.existsSync(checkerBinary))) {
       const cr = await compileAsset(problemId, 'checker');
-      if (cr.success) {
-        const updated = getAsset(problemId, 'checker');
-        checkerBinary = updated?.compiled_binary || '';
-      }
+      if (cr.success) checkerBinary = getAsset(problemId, 'checker')?.compiled_binary || '';
     }
 
-    for (const solId of solutionIds) {
-      const solution = getSolution(solId);
-      if (!solution || solution.problem_id !== problemId) continue;
+    // Phase 3: Compile all solutions in parallel (up to PARALLEL_WORKERS at once).
+    const compiledSolutions = new Map<number, string>(); // solId -> binary path
+    const ceErrors = new Map<number, string>();          // solId -> error message
 
-      // Compile solution if needed
+    await runPool(solutionIds, PARALLEL_WORKERS, async (solId) => {
+      const solution = getSolution(solId);
+      if (!solution || solution.problem_id !== problemId) return;
+
       let binary = solution.compiled_binary;
       if (!binary || !fs.existsSync(binary)) {
         const cr = await compileSolution(problemId, solId);
         if (!cr.success) {
-          // Record compile error for all tests
-          for (const t of tests) {
-            db.prepare(
-              'INSERT INTO invocation_runs (invocation_id, solution_id, test_idx, verdict, time_ms, memory_bytes, exit_code, stderr_preview, stdout_preview, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            ).run(invocationId, solId, t.idx, 'CE', 0, 0, 1, cr.error.slice(0, 500), '', 0);
-          }
-          continue;
+          ceErrors.set(solId, cr.error);
+          return;
         }
-        const updated = getSolution(solId)!;
-        binary = updated.compiled_binary;
+        binary = getSolution(solId)!.compiled_binary;
       }
 
-      if (!binary || !fs.existsSync(binary)) {
-        for (const t of tests) {
-          db.prepare(
-            'INSERT INTO invocation_runs (invocation_id, solution_id, test_idx, verdict, time_ms, memory_bytes, exit_code, stderr_preview, stdout_preview, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-          ).run(invocationId, solId, t.idx, 'CE', 0, 0, 1, 'Binary not found', '', 0);
-        }
-        continue;
+      if (binary && fs.existsSync(binary)) {
+        compiledSolutions.set(solId, binary);
+      } else {
+        ceErrors.set(solId, 'Binary not found after compilation');
       }
+    });
 
+    // Insert CE records for solutions that failed to compile.
+    for (const [solId, err] of ceErrors) {
       for (const t of tests) {
-        const inputPathPattern = testset.input_path_pattern;
-        const answerPathPattern = testset.answer_path_pattern;
-        const testNum = String(t.idx).padStart(2, '0');
-        const inputFile = path.join(problemDir, inputPathPattern.replace('%02d', testNum));
-        const answerFile = path.join(problemDir, answerPathPattern.replace('%02d', testNum));
-
-        if (!fs.existsSync(inputFile)) {
-          // Try generating
-          if (t.method === 'generated' && t.cmd) {
-            const genResult = await generateTestInput(problemId, testset.id, t.idx);
-            if (genResult.success) {
-              fs.copyFileSync(genResult.inputPath, inputFile);
-            } else {
-              db.prepare(
-                'INSERT INTO invocation_runs (invocation_id, solution_id, test_idx, verdict, time_ms, memory_bytes, exit_code, stderr_preview, stdout_preview, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-              ).run(invocationId, solId, t.idx, 'SKIPPED', 0, 0, 0, 'Input not available', '', 0);
-              continue;
-            }
-          } else {
-            db.prepare(
-              'INSERT INTO invocation_runs (invocation_id, solution_id, test_idx, verdict, time_ms, memory_bytes, exit_code, stderr_preview, stdout_preview, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            ).run(invocationId, solId, t.idx, 'SKIPPED', 0, 0, 0, 'Input file missing', '', 0);
-            continue;
-          }
-        }
-
-        const outputFile = path.join(problemDir, 'workdir', `inv_${invocationId}_sol_${solId}_test_${t.idx}.out`);
-        fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-
-        const runResult = await runBinary(binary, {
-          timeLimitMs,
-          stdinFile: inputFile,
-          stdoutFile: outputFile,
-          cwd: problemDir,
-        });
-
-        let verdict: string = runResult.verdict;
-        let checkerComment = '';
-
-        if (verdict === 'OK' && checkerBinary && fs.existsSync(checkerBinary)) {
-          // Generate answer if missing
-          if (!fs.existsSync(answerFile)) {
-            const genAns = await generateTestAnswer(problemId, inputFile, timeLimitMs, memLimitBytes);
-            if (genAns.success) fs.copyFileSync(genAns.answerPath, answerFile);
-          }
-
-          if (fs.existsSync(answerFile)) {
-            const checkerResult = await runChecker(checkerBinary, inputFile, outputFile, answerFile, problemDir);
-            verdict = checkerResult.verdict;
-            checkerComment = checkerResult.comment;
-          } else {
-            checkerComment = 'Answer file missing';
-          }
-        }
-
-        if (verdict === 'TLE') {
-          if (runResult.timeMs < timeLimitMs) verdict = 'RE';
-          else verdict = 'TL';
-        }
-
-        db.prepare(
-          'INSERT INTO invocation_runs (invocation_id, solution_id, test_idx, verdict, time_ms, memory_bytes, exit_code, stderr_preview, stdout_preview, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run(
-          invocationId, solId, t.idx,
-          verdict,
-          runResult.timeMs,
-          0,
-          runResult.exitCode,
-          (runResult.stderr + '\n' + checkerComment).trim().slice(0, 500),
-          runResult.stdout.slice(0, 200),
-          0
-        );
+        db.prepare(INSERT_RUN).run(invocationId, solId, t.idx, 'CE', 0, 0, 1, err.slice(0, 500), '', 0);
       }
     }
+
+    // Phase 4: Build flat list of all (solution, test) pairs and run in parallel.
+    type RunPair = { solId: number; binary: string; test: (typeof tests)[0] };
+    const runPairs: RunPair[] = [];
+    for (const [solId, binary] of compiledSolutions) {
+      for (const t of tests) {
+        runPairs.push({ solId, binary, test: t });
+      }
+    }
+
+    await runPool(runPairs, PARALLEL_WORKERS, async ({ solId, binary, test: t }) => {
+      const testNum = String(t.idx).padStart(2, '0');
+      const inputFile  = path.join(problemDir, testset.input_path_pattern.replace('%02d', testNum));
+      const answerFile = path.join(problemDir, testset.answer_path_pattern.replace('%02d', testNum));
+
+      if (!fs.existsSync(inputFile)) {
+        db.prepare(INSERT_RUN).run(invocationId, solId, t.idx, 'SKIPPED', 0, 0, 0, 'Input file missing', '', 0);
+        return;
+      }
+
+      const outputFile = path.join(problemDir, 'workdir', `inv_${invocationId}_sol_${solId}_test_${t.idx}.out`);
+      fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+
+      const runResult = await runBinary(binary, {
+        timeLimitMs,
+        stdinFile: inputFile,
+        stdoutFile: outputFile,
+        cwd: problemDir,
+      });
+
+      let verdict: string = runResult.verdict;
+      let checkerComment = '';
+
+      if (verdict === 'OK' && checkerBinary && fs.existsSync(checkerBinary)) {
+        // Generate answer file if missing (each test has a unique answerFile path).
+        if (!fs.existsSync(answerFile)) {
+          const genAns = await generateTestAnswer(problemId, inputFile, timeLimitMs, memLimitBytes);
+          if (genAns.success) fs.copyFileSync(genAns.answerPath, answerFile);
+        }
+
+        if (fs.existsSync(answerFile)) {
+          const checkerResult = await runChecker(checkerBinary, inputFile, outputFile, answerFile, problemDir);
+          verdict = checkerResult.verdict;
+          checkerComment = checkerResult.comment;
+        } else {
+          checkerComment = 'Answer file missing';
+        }
+      }
+
+      if (verdict === 'TLE') {
+        verdict = runResult.timeMs < timeLimitMs ? 'RE' : 'TL';
+      }
+
+      db.prepare(INSERT_RUN).run(
+        invocationId, solId, t.idx,
+        verdict,
+        runResult.timeMs,
+        0,
+        runResult.exitCode,
+        (runResult.stderr + '\n' + checkerComment).trim().slice(0, 500),
+        runResult.stdout.slice(0, 200),
+        0
+      );
+    });
 
     db.prepare("UPDATE invocations SET state = 'DONE' WHERE id = ?").run(invocationId);
   } catch (e) {
