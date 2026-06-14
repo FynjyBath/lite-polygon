@@ -337,17 +337,18 @@ async function pushToPolygon(
     //            any coincidence cycles.
     //   Pass 2 — overwrite with real content. After pass 1 all other slots
     //            hold unique placeholders, so real content never coincides.
-    await tryStep('Prepare test slots', async () => {
-      for (const test of tests) {
-        if (test.method === 'generated') continue;
+    for (const test of tests) {
+      if (test.method === 'generated') continue;
+      // Per-test try/catch so one failed placeholder does not abort the rest.
+      await tryStep(`Prepare test slot ${test.idx}`, async () => {
         const p: Record<string, string> = {
           problemId: pid, testset: 'tests', testIndex: String(test.idx),
           testInput: `__placeholder_${test.idx}__`,
         };
         if (test.description) p.testDescription = String(test.description);
         await polygonPost('problem.saveTest', p, key, secret);
-      }
-    });
+      });
+    }
 
     for (const test of tests) {
       if (test.method === 'generated') {
