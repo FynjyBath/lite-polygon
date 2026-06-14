@@ -284,7 +284,8 @@ async function pushToPolygon(
     for (const fname of fs.readdirSync(resourceDir)) {
       const fpath = path.join(resourceDir, fname);
       if (!fs.statSync(fpath).isFile()) continue;
-      const isSource = /\.(cpp|c|py|java|pas|go|h)$/.test(fname);
+      if (/\.h$/.test(fname)) continue; // Polygon doesn't accept .h uploads
+      const isSource = /\.(cpp|c|py|java|pas|go)$/.test(fname);
       const content = fs.readFileSync(fpath, 'utf-8');
       await tryStep(`Resource file (${fname})`, async () => {
         await polygonPost('problem.saveFile', {
