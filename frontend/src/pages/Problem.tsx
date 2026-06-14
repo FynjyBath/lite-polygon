@@ -41,6 +41,7 @@ export default function ProblemPage() {
   const [info, setInfo] = useState<ProblemInfo | null>(null);
   const [error, setError] = useState('');
   const [committing, setCommitting] = useState(false);
+  const [commitToast, setCommitToast] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -62,6 +63,17 @@ export default function ProblemPage() {
 
   return (
     <div>
+      {commitToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 2000,
+          background: '#2a7a2a', color: '#fff', padding: '10px 20px',
+          borderRadius: 6, boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
+          fontSize: 14, fontWeight: 500,
+          animation: 'fadeInUp 0.2s ease',
+        }}>
+          ✓ Changes committed successfully
+        </div>
+      )}
       <div style={{ padding: '8px 16px', borderBottom: '1px solid #ddd', background: '#f9f9f9' }}>
         <div className="breadcrumb">
           <Link to="/">Problems</Link> &rsaquo; {info.shortName}
@@ -133,7 +145,9 @@ export default function ProblemPage() {
               disabled={committing}
               onClick={() => {
                 setCommitting(true);
-                problems.commitChanges(problemId).then(reloadInfo).finally(() => setCommitting(false));
+                problems.commitChanges(problemId)
+                  .then(() => { reloadInfo(); setCommitToast(true); setTimeout(() => setCommitToast(false), 3000); })
+                  .finally(() => setCommitting(false));
               }}
             >
               {committing ? <><span className="spinner" style={{ marginRight: 4 }} />Committing...</> : 'Commit Changes'}

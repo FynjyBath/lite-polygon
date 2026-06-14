@@ -1,3 +1,8 @@
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Polygon-like styling: compact, gray-white tables, small fonts */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -278,6 +283,82 @@ h1, h2, h3 { font-size: 14px; margin: 8px 0; }
   background: #4472c4;
   border-radius: 2px;
   animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+/* Statement preview */
+.stmt-preview {
+  padding: 20px 28px;
+  font-family: 'CMU Serif', Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #111;
+  max-width: 780px;
+  margin: 0 auto;
+}
+.stmt-preview .katex-display { margin: 10px 0; }
+.stmt-preview .katex { font-size: 1em; }
+.stmt-title {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 16px;
+  color: #000;
+  text-align: center;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 10px;
+}
+.stmt-h3 {
+  font-size: 14px;
+  font-weight: bold;
+  margin: 14px 0 6px;
+  color: #000;
+  letter-spacing: 0.01em;
+}
+.stmt-preview section { margin-bottom: 10px; }
+.lx-p { margin: 0.4em 0; }
+.lx-pre {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  padding: 6px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  border-radius: 3px;
+  white-space: pre;
+  overflow-x: auto;
+}
+.lx-tt {
+  font-family: 'Courier New', monospace;
+  background: #f0f0f0;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 0.9em;
+}
+.lx-list { margin: 6px 0 6px 22px; }
+.lx-list li { margin-bottom: 3px; }
+.stmt-example {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0;
+}
+.stmt-example-col { flex: 1; }
+.stmt-example-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: #555;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stmt-example-pre {
+  background: #f8f8f8;
+  border: 1px solid #ddd;
+  padding: 6px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  min-height: 40px;
+  border-radius: 3px;
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
 }
 
 /* Input preview box */
