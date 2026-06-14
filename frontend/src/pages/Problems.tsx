@@ -9,6 +9,7 @@ export default function ProblemsPage() {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [importMsg, setImportMsg] = useState('');
+  const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -48,14 +49,16 @@ export default function ProblemsPage() {
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImportMsg('Importing...');
+    setImporting(true);
+    setImportMsg(`Uploading ${file.name}...`);
     try {
       const result = await problems.importPackage(file, false);
-      setImportMsg(`Imported: ${result.shortName} (${result.filesImported} files, ${result.testsImported} tests)${result.warnings.length ? '\nWarnings: ' + result.warnings.join('; ') : ''}`);
+      setImportMsg(`Imported "${result.shortName}": ${result.filesImported} files, ${result.testsImported} tests${result.warnings.length ? '\nWarnings: ' + result.warnings.join('; ') : ''}`);
       reload();
     } catch (err: unknown) {
       setImportMsg('Import failed: ' + (err as Error).message);
     } finally {
+      setImporting(false);
       if (fileRef.current) fileRef.current.value = '';
     }
   }
@@ -83,14 +86,15 @@ export default function ProblemsPage() {
               + New Problem
             </button>
           </form>
-          <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
-            Upload Package
+          <label className="btn btn-sm" style={{ cursor: importing ? 'not-allowed' : 'pointer', opacity: importing ? 0.6 : 1 }}>
+            {importing ? <><span className="spinner" style={{ marginRight: 4 }} />Uploading...</> : 'Upload Package'}
             <input
               ref={fileRef}
               type="file"
               accept=".zip"
               onChange={handleImport}
               style={{ display: 'none' }}
+              disabled={importing}
             />
           </label>
         </div>
@@ -100,8 +104,12 @@ export default function ProblemsPage() {
       {importMsg && (
         <div className={`alert ${importMsg.startsWith('Import failed') ? 'alert-error' : 'alert-success'}`}
           style={{ whiteSpace: 'pre-line' }}>
-          {importMsg}
-          <button className="btn btn-sm" style={{ marginLeft: 8 }} onClick={() => setImportMsg('')}>×</button>
+          <div className="flex" style={{ alignItems: 'flex-start', gap: 8 }}>
+            {importing && <span className="spinner" style={{ marginTop: 1 }} />}
+            <span style={{ flex: 1 }}>{importMsg}</span>
+            {!importing && <button className="btn btn-sm" onClick={() => setImportMsg('')}>×</button>}
+          </div>
+          {importing && <div className="progress-bar" style={{ marginTop: 6 }}><div className="progress-bar-fill-indeterminate" /></div>}
         </div>
       )}
 

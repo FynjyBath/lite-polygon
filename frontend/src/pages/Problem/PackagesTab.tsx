@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { problems, Package, ProblemInfo } from '../../api/client';
 
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
@@ -10,25 +10,44 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [building, setBuilding] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef(0);
 
-  useEffect(() => { reload(); }, [problemId]);
+  useEffect(() => {
+    reload();
+    return () => stopTimer();
+  }, [problemId]);
 
   function reload() {
     problems.packages(problemId).then(setPackages).catch(e => setError(e.message));
+  }
+
+  function startTimer() {
+    setElapsed(0);
+    startTimeRef.current = Date.now();
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }
 
   async function handleBuild(e: React.FormEvent) {
     e.preventDefault();
     setMsg(''); setError('');
     setBuilding(true);
+    startTimer();
     try {
       const result = await problems.buildPackage(problemId, type, comment);
-      setMsg(`Package #${result.packageId} building...`);
       reload();
       pollPackage(result.packageId);
     } catch (err: unknown) {
       setError((err as Error).message);
       setBuilding(false);
+      stopTimer();
     }
   }
 
@@ -40,13 +59,18 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
       const pkgs = await problems.packages(problemId);
       const pkg = pkgs.find(p => p.id === pkgId);
       if (pkg && (pkg.state === 'READY' || pkg.state === 'FAILED')) {
-        setMsg(pkg.state === 'READY' ? `Package #${pkgId} ready!` : `Package #${pkgId} failed`);
+        const took = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        stopTimer();
+        setMsg(pkg.state === 'READY'
+          ? `Package #${pkgId} ready! (${took}s)`
+          : `Package #${pkgId} failed`);
         setBuilding(false);
         if (pkg.state === 'READY') onUpdate();
         return;
       }
       attempts++;
     }
+    stopTimer();
     setBuilding(false);
   }
 
@@ -113,6 +137,18 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
           </button>
         </div>
       </form>
+
+      {building && (
+        <div style={{ marginTop: 10 }}>
+          <div className="flex" style={{ fontSize: 12, color: '#c60', gap: 6 }}>
+            <span className="spinner" />
+            Building package... ({elapsed}s elapsed)
+          </div>
+          <div className="progress-bar">
+            <div className="progress-bar-fill-indeterminate" />
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 16, padding: '8px 12px', background: '#f4f8ff', border: '1px solid #cce', fontSize: 11 }}>
         <strong>Current problem state:</strong> Rev {info.revision},

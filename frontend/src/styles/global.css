@@ -236,6 +236,46 @@ h1, h2, h3 { font-size: 14px; margin: 8px 0; }
 /* Source type badge */
 .source-type { font-family: monospace; font-size: 11px; color: #555; }
 
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #ccc;
+  border-top-color: #4472c4;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* Progress bar */
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-200%); }
+  100% { transform: translateX(500%); }
+}
+.progress-bar {
+  height: 5px;
+  background: #e0e0e0;
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 5px 0;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: #4472c4;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.progress-bar-fill-indeterminate {
+  height: 100%;
+  width: 35%;
+  background: #4472c4;
+  border-radius: 2px;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
 /* Input preview box */
 .input-preview {
   background: #f4f4f4;

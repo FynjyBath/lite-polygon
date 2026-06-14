@@ -38,6 +38,7 @@ export default function ProblemPage() {
   const problemId = parseInt(id ?? '');
   const [info, setInfo] = useState<ProblemInfo | null>(null);
   const [error, setError] = useState('');
+  const [committing, setCommitting] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -101,7 +102,7 @@ export default function ProblemPage() {
             <Route path="interactor" element={<InteractorTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
             <Route path="tests" element={<TestsTab problemId={problemId} info={info} />} />
             <Route path="solutions" element={<SolutionsTab problemId={problemId} />} />
-            <Route path="invocations" element={<InvocationsTab problemId={problemId} />} />
+            <Route path="invocations" element={<InvocationsTab problemId={problemId} testsCount={info.testsCount} solutionsCount={info.solutionsCount} />} />
             <Route path="stresses" element={<StressesTab problemId={problemId} />} />
             <Route path="packages" element={<PackagesTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
             <Route path="tags" element={<TagsTab problemId={problemId} info={info} onUpdate={reloadInfo} />} />
@@ -126,9 +127,13 @@ export default function ProblemPage() {
             <button
               className="btn btn-sm"
               style={{ width: '100%' }}
-              onClick={() => { problems.commitChanges(problemId).then(reloadInfo); }}
+              disabled={committing}
+              onClick={() => {
+                setCommitting(true);
+                problems.commitChanges(problemId).then(reloadInfo).finally(() => setCommitting(false));
+              }}
             >
-              Commit Changes
+              {committing ? <><span className="spinner" style={{ marginRight: 4 }} />Committing...</> : 'Commit Changes'}
             </button>
           </div>
         </div>

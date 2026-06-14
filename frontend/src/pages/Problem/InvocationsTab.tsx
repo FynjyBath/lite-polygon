@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { problems, Invocation, InvocationRun, Solution } from '../../api/client';
 
-interface Props { problemId: number; }
+interface Props { problemId: number; testsCount: number; solutionsCount: number; }
 
-export default function InvocationsTab({ problemId }: Props) {
+export default function InvocationsTab({ problemId, testsCount, solutionsCount }: Props) {
   const [invocations, setInvocations] = useState<Invocation[]>([]);
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [selectedSols, setSelectedSols] = useState<number[]>([]);
@@ -11,6 +11,7 @@ export default function InvocationsTab({ problemId }: Props) {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [polling, setPolling] = useState(false);
+  const [pollingRuns, setPollingRuns] = useState(0);
 
   useEffect(() => {
     problems.solutions(problemId).then(setSolutions);
@@ -26,6 +27,7 @@ export default function InvocationsTab({ problemId }: Props) {
     try {
       const result = await problems.runInvocation(problemId, selectedSols.length > 0 ? selectedSols : undefined);
       setMsg(`Invocation ${result.invocationId} started`);
+      setActive(null);
       reload();
       pollInvocation(result.invocationId);
     } catch (err: unknown) {
@@ -35,22 +37,29 @@ export default function InvocationsTab({ problemId }: Props) {
 
   async function pollInvocation(invId: number) {
     setPolling(true);
+    setPollingRuns(0);
     let attempts = 0;
     while (attempts < 120) {
       await new Promise(r => setTimeout(r, 2000));
       try {
         const result = await problems.invocationResults(problemId, invId);
+        setPollingRuns(result.runs.length);
+        // Update matrix live as runs come in
+        const inv = invocations.find(i => i.id === invId)
+          ?? { id: invId, state: result.state, testset_name: 'tests', created_at: '' };
+        setActive({ inv: { ...inv, state: result.state }, runs: result.runs });
         if (result.state === 'DONE' || result.state === 'FAILED') {
-          const inv = invocations.find(i => i.id === invId) ?? { id: invId, state: result.state, testset_name: 'tests', created_at: '' };
-          setActive({ inv: { ...inv, state: result.state }, runs: result.runs });
           reload();
           setPolling(false);
+          setPollingRuns(0);
+          setMsg('');
           return;
         }
       } catch { break; }
       attempts++;
     }
     setPolling(false);
+    setPollingRuns(0);
   }
 
   async function handleView(inv: Invocation) {
@@ -62,7 +71,6 @@ export default function InvocationsTab({ problemId }: Props) {
     }
   }
 
-  // Group runs by solution for matrix view
   function buildMatrix() {
     if (!active) return null;
     const solIds = [...new Set(active.runs.map(r => r.solution_id))];
@@ -74,17 +82,36 @@ export default function InvocationsTab({ problemId }: Props) {
 
   const matrix = buildMatrix();
 
+  const totalRuns = testsCount * (selectedSols.length > 0 ? selectedSols.length : solutionsCount);
+  const progressPct = totalRuns > 0 ? Math.min(100, (pollingRuns / totalRuns) * 100) : 0;
+
   return (
     <div>
       <div className="flex-between" style={{ marginBottom: 8 }}>
         <h2>Invocations</h2>
-        <div className="flex">
-          {polling && <span style={{ color: '#c60', fontSize: 12 }}>Running...</span>}
-          <button className="btn btn-primary" onClick={handleRun} disabled={polling}>
-            Run Invocation
-          </button>
-        </div>
+        <button className="btn btn-primary" onClick={handleRun} disabled={polling}>
+          Run Invocation
+        </button>
       </div>
+
+      {polling && (
+        <div style={{ marginBottom: 8 }}>
+          <div className="flex" style={{ color: '#c60', fontSize: 12, gap: 6 }}>
+            <span className="spinner" />
+            Running invocation...
+            {pollingRuns > 0 && (
+              <span>
+                {pollingRuns}{totalRuns > 0 ? `/${totalRuns}` : ''} test{pollingRuns !== 1 ? 's' : ''} done
+              </span>
+            )}
+          </div>
+          <div className="progress-bar">
+            {totalRuns > 0
+              ? <div className="progress-bar-fill" style={{ width: `${progressPct}%` }} />
+              : <div className="progress-bar-fill-indeterminate" />}
+          </div>
+        </div>
+      )}
 
       {msg && <div className="alert alert-success">{msg}</div>}
       {error && <div className="alert alert-error">{error}</div>}
@@ -130,7 +157,13 @@ export default function InvocationsTab({ problemId }: Props) {
       {active && matrix && (
         <div>
           <div className="flex-between" style={{ marginBottom: 4 }}>
-            <strong>Invocation #{active.inv.id} — {active.inv.state}</strong>
+            <strong>
+              Invocation #{active.inv.id} —{' '}
+              <span style={{ color: active.inv.state === 'DONE' ? 'green' : active.inv.state === 'FAILED' ? 'red' : '#c60' }}>
+                {active.inv.state}
+              </span>
+              {polling && <span className="spinner" style={{ marginLeft: 8 }} />}
+            </strong>
             <button className="btn btn-sm" onClick={() => setActive(null)}>Close</button>
           </div>
           <div style={{ overflowX: 'auto' }}>
