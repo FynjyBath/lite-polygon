@@ -29,6 +29,8 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const [bulkGroup, setBulkGroup] = useState('');
   const [bulkPoints, setBulkPoints] = useState('');
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [moveToIdx, setMoveToIdx] = useState('');
+  const lastClickedRef = useRef<number | null>(null);
 
   useEffect(() => { reload(); }, [problemId]);
 
@@ -164,6 +166,24 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     }
   }
 
+  function handleCheckboxClick(e: React.MouseEvent<HTMLInputElement>, idx: number) {
+    if (e.shiftKey && lastClickedRef.current !== null) {
+      e.preventDefault();
+      const from = Math.min(lastClickedRef.current, idx);
+      const to = Math.max(lastClickedRef.current, idx);
+      const rangeIdxs = tests.filter(t => t.idx >= from && t.idx <= to).map(t => t.idx);
+      const allInRange = rangeIdxs.every(i => selected.has(i));
+      setSelected(s => {
+        const next = new Set(s);
+        rangeIdxs.forEach(i => { if (allInRange) next.delete(i); else next.add(i); });
+        return next;
+      });
+    } else {
+      toggleSelect(idx);
+      lastClickedRef.current = idx;
+    }
+  }
+
   // ── Bulk operations ───────────────────────────────────────────────────────
   async function bulkSetSample(value: boolean) {
     if (!selected.size) return;
@@ -211,6 +231,22 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
       }
       setMsg(`Deleted ${sorted.length} test(s)`);
       setSelected(new Set());
+      reload();
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setBulkWorking(false); }
+  }
+
+  async function handleMoveTo() {
+    if (!selected.size || !moveToIdx) return;
+    const target = parseInt(moveToIdx);
+    if (!target || target < 1) return;
+    setBulkWorking(true); setMsg(''); setError('');
+    try {
+      const result = await problems.moveTestsTo(problemId, [...selected], target);
+      setMsg(`Moved ${selected.size} test(s); tests renumbered 1–${result.count}`);
+      setSelected(new Set());
+      lastClickedRef.current = null;
+      setMoveToIdx('');
       reload();
     } catch (err: unknown) { setError((err as Error).message); }
     finally { setBulkWorking(false); }
@@ -309,8 +345,20 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
             />
             <button className="btn btn-sm" onClick={bulkSetPoints} disabled={bulkWorking}>Apply</button>
           </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Move to:
+            <input
+              type="number"
+              min="1"
+              max={tests.length}
+              value={moveToIdx}
+              onChange={e => setMoveToIdx(e.target.value)}
+              style={{ width: 56, fontSize: 12, padding: '1px 4px', border: '1px solid #aaa' }}
+            />
+            <button className="btn btn-sm" onClick={handleMoveTo} disabled={bulkWorking || !moveToIdx}>Go</button>
+          </span>
           <button className="btn btn-sm btn-danger" onClick={bulkDelete} disabled={bulkWorking}>Delete</button>
-          <button className="btn btn-sm" onClick={() => setSelected(new Set())} style={{ marginLeft: 4 }}>✕ Clear</button>
+          <button className="btn btn-sm" onClick={() => { setSelected(new Set()); lastClickedRef.current = null; }} style={{ marginLeft: 4 }}>✕ Clear</button>
         </div>
       )}
 
@@ -350,7 +398,8 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => toggleSelect(t.idx)}
+                      onChange={() => {}}
+                      onClick={(e) => handleCheckboxClick(e as unknown as React.MouseEvent<HTMLInputElement>, t.idx)}
                     />
                   </td>
                   <td style={{ textAlign: 'center', color: '#666' }}>{t.idx}</td>

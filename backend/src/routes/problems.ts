@@ -131,6 +131,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       modified: problem.modified === 1,
       generalDescription: problem.general_description,
       generalTutorial: problem.general_tutorial,
+      polygonProblemId: (problem as unknown as Record<string, unknown>).polygon_problem_id as number | null ?? null,
       names,
       tags,
       checker: checker ? { sourcePath: checker.source_path, sourceType: checker.source_type, name: checker.name } : null,
@@ -1250,6 +1251,120 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (fs.existsSync(sectionsDir)) fs.rmSync(sectionsDir, { recursive: true, force: true });
     updateProblem(id, { modified: 1 });
     return ok(null);
+  });
+
+  // problem.moveTestsTo
+  app.post('/api/problem.moveTestsTo', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId, testIndices, targetIdx, testset } = req.body as {
+      problemId?: string | number;
+      testIndices?: number[];
+      targetIdx?: number;
+      testset?: string;
+    };
+    const id = parseInt(String(problemId ?? ''));
+    if (!id || targetIdx === undefined || !Array.isArray(testIndices) || !testIndices.length) {
+      return reply.code(400).send({ status: 'FAILED', comment: 'problemId, testIndices and targetIdx required' });
+    }
+    if (!getProblemForUser(id, user.id, reply)) return;
+    const ts = getTestset(id, testset ?? 'tests');
+    if (!ts) return reply.code(400).send({ status: 'FAILED', comment: 'Testset not found' });
+
+    const allTests = listTests(ts.id);
+    const selectedSet = new Set(testIndices.map(Number));
+    const remaining = allTests.filter(t => !selectedSet.has(t.idx));
+    const selected = allTests.filter(t => selectedSet.has(t.idx));
+    if (!selected.length) return reply.code(400).send({ status: 'FAILED', comment: 'No matching tests found' });
+
+    const insertPos = Math.max(0, Math.min(targetIdx - 1, remaining.length));
+    const newOrder = [...remaining.slice(0, insertPos), ...selected, ...remaining.slice(insertPos)];
+
+    db.transaction(() => {
+      const bigOffset = allTests.length + 10000;
+      db.prepare('UPDATE tests SET idx = idx + ? WHERE testset_id = ?').run(bigOffset, ts.id);
+      for (let i = 0; i < newOrder.length; i++) {
+        db.prepare('UPDATE tests SET idx = ? WHERE id = ?').run(i + 1, newOrder[i].id);
+      }
+    })();
+
+    updateProblem(id, { modified: 1 });
+    return ok({ count: newOrder.length });
+  });
+
+  // problem.validate
+  app.get('/api/problem.validate', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId } = req.query as { problemId?: string };
+    const id = parseInt(problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    const problem = getProblemForUser(id, user.id, reply);
+    if (!problem) return;
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const problemDir = getProblemDir(id);
+
+    if (!problem.time_limit || problem.time_limit <= 0) errors.push('Time limit is not set');
+    if (!problem.memory_limit || problem.memory_limit <= 0) errors.push('Memory limit is not set');
+
+    const testset = getTestset(id, 'tests');
+    const tests = testset ? listTests(testset.id) : [];
+    if (tests.length === 0) {
+      errors.push('No tests: add at least one test');
+    }
+
+    const checker = getAsset(id, 'checker');
+    if (!checker || !checker.source_path) {
+      errors.push('No checker: set a checker on the Checker tab');
+    } else {
+      const checkerSrc = path.join(problemDir, checker.source_path);
+      if (!fs.existsSync(checkerSrc) && !checker.binary_path) {
+        warnings.push(`Checker source not found on disk: ${checker.source_path}`);
+      }
+    }
+
+    const validator = getAsset(id, 'validator');
+    if (!validator || !validator.source_path) {
+      warnings.push('No validator: consider adding a validator');
+    }
+
+    const solutions = listSolutions(id);
+    if (solutions.length === 0) {
+      errors.push('No solutions: add at least one solution');
+    } else {
+      const mainSols = solutions.filter(s => s.tag === 'main');
+      if (mainSols.length === 0) {
+        errors.push('No main solution: set one solution\'s tag to "main"');
+      } else {
+        const lastInv = db.prepare('SELECT * FROM invocations WHERE problem_id = ? ORDER BY id DESC LIMIT 1').get(id) as { id: number; state: string } | undefined;
+        if (!lastInv) {
+          warnings.push('No invocation run yet: run an invocation to verify solutions');
+        } else if (lastInv.state !== 'DONE') {
+          warnings.push(`Last invocation did not complete (state: ${lastInv.state})`);
+        } else {
+          const phs = mainSols.map(() => '?').join(',');
+          const args: unknown[] = [lastInv.id, ...mainSols.map(s => s.id)];
+          const row = db.prepare(`SELECT COUNT(*) as cnt FROM invocation_runs WHERE invocation_id = ? AND solution_id IN (${phs}) AND verdict != 'OK'`).get(...args as [unknown, ...unknown[]]) as { cnt: number };
+          if (row.cnt > 0) {
+            errors.push(`Main solution failed ${row.cnt} test(s) in the last invocation`);
+          }
+        }
+      }
+    }
+
+    const stmts = listStatements(id);
+    if (stmts.length === 0) {
+      warnings.push('No statement: consider adding a problem statement');
+    }
+
+    if (problem.interactive === 1) {
+      const interactor = getAsset(id, 'interactor');
+      if (!interactor || !interactor.source_path) {
+        errors.push('Problem is marked interactive but no interactor is set');
+      }
+    }
+
+    return ok({ errors, warnings });
   });
 }
 

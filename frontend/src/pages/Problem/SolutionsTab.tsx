@@ -10,7 +10,8 @@ const TAGS = ['main', 'accepted', 'wrong-answer', 'time-limit-exceeded', 'time-l
 export default function SolutionsTab({ problemId }: Props) {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [content, setContent] = useState('');
-  const [newSol, setNewSol] = useState({ sourcePath: '', sourceType: 'cpp.g++17', tag: 'accepted' });
+  const [newSol, setNewSol] = useState({ sourceType: 'cpp.g++17', tag: 'accepted' });
+  const [derivedPath, setDerivedPath] = useState('');
   const [viewSrc, setViewSrc] = useState<{ path: string; content: string } | null>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -26,21 +27,22 @@ export default function SolutionsTab({ problemId }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setContent(reader.result as string);
-      if (!newSol.sourcePath) setNewSol(s => ({ ...s, sourcePath: 'solutions/' + file.name }));
-    };
+    reader.onload = () => setContent(reader.result as string);
     reader.readAsText(file);
+    setDerivedPath('solutions/' + file.name);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setMsg(''); setError('');
+    if (!derivedPath && !content) { setError('Upload a file or paste code'); return; }
+    const sourcePath = derivedPath || 'solutions/main.cpp';
     try {
-      await problems.saveSolution({ problemId, ...newSol, content: content || undefined });
+      await problems.saveSolution({ problemId, sourcePath, ...newSol, content: content || undefined });
       setMsg('Solution saved');
-      setNewSol({ sourcePath: '', sourceType: 'cpp.g++17', tag: 'accepted' });
+      setNewSol({ sourceType: 'cpp.g++17', tag: 'accepted' });
       setContent('');
+      setDerivedPath('');
       if (fileRef.current) fileRef.current.value = '';
       reload();
     } catch (err: unknown) {
@@ -119,14 +121,15 @@ export default function SolutionsTab({ problemId }: Props) {
           <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
             style={{ fontSize: 12 }} />
         </div>
-        <div className="form-row">
-          <label>Source path:</label>
-          <input type="text" value={newSol.sourcePath} onChange={e => setNewSol({ ...newSol, sourcePath: e.target.value })}
-            placeholder="solutions/main.cpp" style={{ width: 260 }} required />
-        </div>
+        {derivedPath && (
+          <div className="form-row">
+            <label>Will save to:</label>
+            <span style={{ fontSize: 12, color: '#555', fontFamily: 'monospace' }}>{derivedPath}</span>
+          </div>
+        )}
         <div className="form-row">
           <label>Source type:</label>
-          <select value={newSol.sourceType} onChange={e => setNewSol({ ...newSol, sourceType: e.target.value })}>
+          <select value={newSol.sourceType} onChange={e => setNewSol(s => ({ ...s, sourceType: e.target.value }))}>
             <option value="cpp.g++17">cpp.g++17</option>
             <option value="cpp.g++20">cpp.g++20</option>
             <option value="cpp.gcc14-64-msys2-g++23">cpp.gcc14-64-msys2-g++23</option>
@@ -134,7 +137,7 @@ export default function SolutionsTab({ problemId }: Props) {
         </div>
         <div className="form-row">
           <label>Tag:</label>
-          <select value={newSol.tag} onChange={e => setNewSol({ ...newSol, tag: e.target.value })}>
+          <select value={newSol.tag} onChange={e => setNewSol(s => ({ ...s, tag: e.target.value }))}>
             {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>

@@ -11,6 +11,10 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
   const [error, setError] = useState('');
   const [building, setBuilding] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [validating, setValidating] = useState(false);
+  const [validErrors, setValidErrors] = useState<string[]>([]);
+  const [validWarnings, setValidWarnings] = useState<string[]>([]);
+  const [showValidation, setShowValidation] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
 
@@ -44,9 +48,36 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }
 
+  async function handleValidate() {
+    setValidating(true); setMsg(''); setError('');
+    try {
+      const result = await problems.validate(problemId);
+      setValidErrors(result.errors);
+      setValidWarnings(result.warnings);
+      setShowValidation(true);
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally { setValidating(false); }
+  }
+
   async function handleBuild(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(''); setError('');
+    setMsg(''); setError(''); setShowValidation(false);
+    setValidating(true);
+    let errs: string[] = [];
+    let warns: string[] = [];
+    try {
+      const result = await problems.validate(problemId);
+      errs = result.errors; warns = result.warnings;
+      setValidErrors(errs); setValidWarnings(warns);
+    } catch { /* ignore validation errors, proceed */ }
+    setValidating(false);
+    if (errs.length > 0) {
+      setShowValidation(true);
+      setError('Build blocked: fix validation errors before building');
+      return;
+    }
+    if (warns.length > 0) setShowValidation(true);
     setBuilding(true);
     startTimer();
     try {
@@ -131,7 +162,37 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
         </tbody>
       </table>
 
-      <div className="section-header">Build Package</div>
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        Build Package
+        <button type="button" className="btn btn-sm" onClick={handleValidate} disabled={validating || building} style={{ fontWeight: 'normal', fontSize: 11 }}>
+          {validating ? 'Validating…' : 'Validate Only'}
+        </button>
+      </div>
+
+      {showValidation && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', border: '1px solid #ddd', borderRadius: 4 }}>
+          {validErrors.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <strong style={{ color: 'red' }}>Errors ({validErrors.length}):</strong>
+              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                {validErrors.map((e, i) => <li key={i} style={{ color: 'red', fontSize: 12 }}>{e}</li>)}
+              </ul>
+            </div>
+          )}
+          {validWarnings.length > 0 && (
+            <div>
+              <strong style={{ color: '#c60' }}>Warnings ({validWarnings.length}):</strong>
+              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                {validWarnings.map((w, i) => <li key={i} style={{ color: '#c60', fontSize: 12 }}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+          {validErrors.length === 0 && validWarnings.length === 0 && (
+            <div style={{ color: 'green', fontSize: 12 }}>All checks passed!</div>
+          )}
+        </div>
+      )}
+
       <form onSubmit={handleBuild}>
         <div className="form-row">
           <label>Type:</label>

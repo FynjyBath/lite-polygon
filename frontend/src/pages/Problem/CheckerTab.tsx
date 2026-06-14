@@ -3,13 +3,28 @@ import { problems, Asset, ProblemInfo, CheckerTest } from '../../api/client';
 
 interface Props { problemId: number; info: ProblemInfo; onUpdate: () => void; }
 
+const STANDARD_CHECKERS = [
+  { name: 'std::ncmp.cpp', desc: 'Sequence of long long integers' },
+  { name: 'std::wcmp.cpp', desc: 'Sequence of tokens (case-sensitive)' },
+  { name: 'std::nyesno.cpp', desc: 'YES or NO (single token)' },
+  { name: 'std::yesno.cpp', desc: 'YES or NO (line)' },
+  { name: 'std::fcmp.cpp', desc: 'Sequence of lines (strict)' },
+  { name: 'std::lcmp.cpp', desc: 'Tokens, line by line' },
+  { name: 'std::rcmp.cpp', desc: 'Real numbers (1e-6 tolerance)' },
+  { name: 'std::rcmp4.cpp', desc: 'Real numbers (1e-4 tolerance)' },
+  { name: 'std::rcmp6.cpp', desc: 'Real numbers (1e-6 tolerance)' },
+  { name: 'std::rcmp9.cpp', desc: 'Real numbers (1e-9 tolerance)' },
+  { name: 'std::icmp.cpp', desc: 'Integer comparison' },
+];
+
 export default function CheckerTab({ problemId, info, onUpdate }: Props) {
   const [checker, setChecker] = useState<Asset | null>(null);
-  const [sourcePath, setSourcePath] = useState('');
+  const [mode, setMode] = useState<'standard' | 'custom'>('standard');
+  const [stdChecker, setStdChecker] = useState(STANDARD_CHECKERS[0].name);
   const [sourceType, setSourceType] = useState('cpp.g++17');
-  const [name, setName] = useState('');
   const [checkerType, setCheckerType] = useState('testlib');
   const [content, setContent] = useState('');
+  const [derivedPath, setDerivedPath] = useState('');
   const [tests, setTests] = useState<CheckerTest[]>([]);
   const [newTest, setNewTest] = useState({ input: '', output: '', answer: '', verdict: 'OK' });
   const [msg, setMsg] = useState('');
@@ -27,28 +42,35 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setContent(reader.result as string);
-      if (!sourcePath) setSourcePath('files/' + file.name);
-    };
+    reader.onload = () => setContent(reader.result as string);
     reader.readAsText(file);
+    setDerivedPath('files/' + file.name);
   }
 
-  async function handleSave(e: React.FormEvent) {
+  async function handleSaveStandard(e: React.FormEvent) {
     e.preventDefault();
     setMsg(''); setError('');
     try {
-      if (sourcePath && content) {
-        await problems.saveFile({ problemId, path: sourcePath, sourceType, content });
+      await problems.setChecker({ problemId, sourcePath: stdChecker, sourceType: 'cpp.g++17', name: stdChecker, type: 'testlib' });
+      setMsg(`Standard checker ${stdChecker} set`);
+      reload(); onUpdate();
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
+  async function handleSaveCustom(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(''); setError('');
+    try {
+      if (derivedPath && content) {
+        await problems.saveFile({ problemId, path: derivedPath, sourceType, content });
       }
-      await problems.setChecker({ problemId, sourcePath, sourceType, name, type: checkerType });
-      setMsg('Checker saved');
+      await problems.setChecker({ problemId, sourcePath: derivedPath, sourceType, name: '', type: checkerType });
+      setMsg('Custom checker saved');
       setContent('');
+      setDerivedPath('');
       if (fileRef.current) fileRef.current.value = '';
       reload(); onUpdate();
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    }
+    } catch (err: unknown) { setError((err as Error).message); }
   }
 
   async function addTest(e: React.FormEvent) {
@@ -57,9 +79,7 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
       await problems.saveCheckerTest({ problemId, ...newTest, expectedVerdict: newTest.verdict });
       setNewTest({ input: '', output: '', answer: '', verdict: 'OK' });
       reload();
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    }
+    } catch (err: unknown) { setError((err as Error).message); }
   }
 
   return (
@@ -70,53 +90,84 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
 
       {checker && (
         <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f4f4f4', border: '1px solid #ddd' }}>
-          <strong>Current checker:</strong> <span className="source-type">{checker.source_path}</span>
-          {' '}(<span className="source-type">{checker.source_type}</span>)
-          {checker.name && <> — {checker.name}</>}
+          <strong>Current checker:</strong>{' '}
+          <span className="source-type">{checker.name || checker.source_path}</span>
+          {' '}(<span className="source-type">{checker.source_type || 'testlib'}</span>)
         </div>
       )}
 
-      <form onSubmit={handleSave} style={{ marginBottom: 16 }}>
-        <div className="section-header">Set Checker</div>
-        <div className="form-row">
-          <label>Upload file:</label>
-          <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
-            style={{ fontSize: 12 }} />
-        </div>
-        <div className="form-row">
-          <label>Source path:</label>
-          <input type="text" value={sourcePath} onChange={e => setSourcePath(e.target.value)}
-            placeholder="files/check.cpp" style={{ width: 260 }} />
-        </div>
-        <div className="form-row">
-          <label>Source type:</label>
-          <select value={sourceType} onChange={e => setSourceType(e.target.value)}>
-            <option value="cpp.g++17">cpp.g++17</option>
-            <option value="cpp.g++20">cpp.g++20</option>
-            <option value="cpp.gcc14-64-msys2-g++23">cpp.gcc14-64-msys2-g++23</option>
-          </select>
-        </div>
-        <div className="form-row">
-          <label>Name (optional):</label>
-          <input type="text" value={name} onChange={e => setName(e.target.value)} style={{ width: 200 }} />
-        </div>
-        <div className="form-row">
-          <label>Type:</label>
-          <select value={checkerType} onChange={e => setCheckerType(e.target.value)}>
-            <option value="testlib">testlib</option>
-            <option value="custom">custom</option>
-          </select>
-        </div>
-        {content && (
-          <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-            <label style={{ marginBottom: 4 }}>Content preview (will be saved to {sourcePath}):</label>
-            <div className="code-view" style={{ maxHeight: 120 }}>{content.slice(0, 500)}{content.length > 500 ? '…' : ''}</div>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 12 }}>
+        <button
+          className={`btn btn-sm${mode === 'standard' ? ' btn-primary' : ''}`}
+          style={{ borderRadius: '4px 0 0 4px' }}
+          onClick={() => setMode('standard')}
+        >Standard Checker</button>
+        <button
+          className={`btn btn-sm${mode === 'custom' ? ' btn-primary' : ''}`}
+          style={{ borderRadius: '0 4px 4px 0' }}
+          onClick={() => setMode('custom')}
+        >Custom Checker</button>
+      </div>
+
+      {mode === 'standard' ? (
+        <form onSubmit={handleSaveStandard} style={{ marginBottom: 16 }}>
+          <div className="section-header">Select Standard Checker</div>
+          <div className="form-row">
+            <label>Checker:</label>
+            <select value={stdChecker} onChange={e => setStdChecker(e.target.value)} style={{ width: 320 }}>
+              {STANDARD_CHECKERS.map(c => (
+                <option key={c.name} value={c.name}>{c.name} — {c.desc}</option>
+              ))}
+            </select>
           </div>
-        )}
-        <div className="form-actions">
-          <button type="submit" className="btn btn-primary">Set Checker</button>
-        </div>
-      </form>
+          <div style={{ fontSize: 11, color: '#888', marginLeft: 120, marginBottom: 8 }}>
+            Standard checkers require the checker file to be present in the <code>files/</code> directory
+            (e.g., from an imported Polygon package).
+          </div>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary">Use Standard Checker</button>
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={handleSaveCustom} style={{ marginBottom: 16 }}>
+          <div className="section-header">Upload Custom Checker</div>
+          <div className="form-row">
+            <label>Upload file:</label>
+            <input ref={fileRef} type="file" accept=".cpp,.py,.java,.pas,.c,.go" onChange={handleFile}
+              style={{ fontSize: 12 }} />
+          </div>
+          {derivedPath && (
+            <div className="form-row">
+              <label>Will save to:</label>
+              <span style={{ fontSize: 12, color: '#555', fontFamily: 'monospace' }}>{derivedPath}</span>
+            </div>
+          )}
+          <div className="form-row">
+            <label>Source type:</label>
+            <select value={sourceType} onChange={e => setSourceType(e.target.value)}>
+              <option value="cpp.g++17">cpp.g++17</option>
+              <option value="cpp.g++20">cpp.g++20</option>
+              <option value="cpp.gcc14-64-msys2-g++23">cpp.gcc14-64-msys2-g++23</option>
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Type:</label>
+            <select value={checkerType} onChange={e => setCheckerType(e.target.value)}>
+              <option value="testlib">testlib</option>
+              <option value="custom">custom</option>
+            </select>
+          </div>
+          {content && (
+            <div className="form-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+              <label style={{ marginBottom: 4 }}>Content preview:</label>
+              <div className="code-view" style={{ maxHeight: 120 }}>{content.slice(0, 500)}{content.length > 500 ? '…' : ''}</div>
+            </div>
+          )}
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={!derivedPath}>Set Custom Checker</button>
+          </div>
+        </form>
+      )}
 
       <div className="section-header">Checker Tests</div>
       <table className="poly-table" style={{ marginBottom: 8 }}>
