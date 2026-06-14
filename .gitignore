@@ -18,3 +18,16 @@ frontend/node_modules/
 # Logs
 *.log
 /tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test fixture ZIPs (large files, not for git)
+*.zip
