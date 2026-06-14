@@ -46,9 +46,6 @@ export default function LoginPage() {
           <Link to="/register">Register</Link>
         </div>
       </form>
-      <p style={{ marginTop: 12, fontSize: 11, color: '#888' }}>
-        Default: admin / admin (please change password after login)
-      </p>
     </div>
   );
 }
