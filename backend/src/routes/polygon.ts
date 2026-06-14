@@ -208,18 +208,26 @@ async function pushToPolygon(
   }
 
   // 5. Solutions
+  const TAG_MAP: Record<string, string> = {
+    'main': 'MA', 'accepted': 'OK', 'rejected': 'RJ',
+    'wrong-answer': 'WA', 'time-limit-exceeded': 'TL',
+    'memory-limit-exceeded': 'ML', 'presentation-error': 'PE',
+    'time-limit-exceeded-or-accepted': 'TO', 'runtime-error': 'RE',
+    'time-limit-exceeded-or-memory-limit-exceeded': 'TL',
+  };
   const solutions = listSolutions(localProblemId);
   for (const sol of solutions) {
     const solFile = path.join(problemDir, sol.source_path);
     if (!fs.existsSync(solFile)) { errors.push(`Solution ${sol.source_path}: file not found on disk`); continue; }
     const content = fs.readFileSync(solFile, 'utf-8');
     await tryStep(`Solution (${path.basename(sol.source_path)})`, async () => {
+      const tag = TAG_MAP[sol.tag] ?? TAG_MAP[sol.tag?.toLowerCase()] ?? 'OK';
       await polygonPost('problem.saveSolution', {
         problemId: pid,
         name: path.basename(sol.source_path),
         file: content,
         sourceType: sol.source_type || 'cpp.g++17',
-        tag: sol.tag || 'accepted',
+        tag,
       }, key, secret);
     });
   }
@@ -238,16 +246,16 @@ async function pushToPolygon(
       if (!fs.existsSync(inputPath)) { errors.push(`Test ${test.idx}: input file not found`); continue; }
       const input = fs.readFileSync(inputPath, 'utf-8');
       await tryStep(`Test ${test.idx}`, async () => {
-        await polygonPost('problem.saveTest', {
+        const testParams: Record<string, string> = {
           problemId: pid,
           testset: 'tests',
           testIndex: String(test.idx),
           testInput: input,
-          testGroup: test.group_name || '',
-          testPoints: String(test.points || 0),
-          testDescription: test.description || '',
-          testUseInStatements: test.sample === 1 ? 'true' : 'false',
-        }, key, secret);
+          useInStatements: test.sample === 1 ? 'true' : 'false',
+          checkExisting: 'true',
+        };
+        if (test.description) testParams.description = test.description;
+        await polygonPost('problem.saveTest', testParams, key, secret);
       });
     }
   }
