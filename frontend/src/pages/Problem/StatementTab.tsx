@@ -85,6 +85,45 @@ export default function StatementTab({ problemId }: Props) {
     problems.statementResources(problemId, lang).then(setResources).catch(() => setResources([]));
   }
 
+  // Build a LaTeX scoring table from the test groups and put it into the
+  // Scoring field. Points come from the groups (sum of their tests' points),
+  // required subtasks from dependencies; additional constraints are left empty
+  // (group 0 keeps "тесты из условия").
+  async function generateScoringTable() {
+    setMsg(''); setError('');
+    try {
+      const groups = await problems.viewTestGroup(problemId);
+      if (groups.length === 0) { setError('No test groups — assign group names to tests first'); return; }
+      const sorted = [...groups].sort((a, b) => {
+        const na = Number(a.name), nb = Number(b.name);
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        return a.name.localeCompare(b.name);
+      });
+      const rows = sorted.map(g => {
+        const constraint = g.name === '0' ? 'тесты из условия' : '';
+        const deps = (g.dependencies || []).join(', ');
+        const pts = Number.isInteger(g.points) ? String(g.points) : String(g.points);
+        return `${g.name} & ${pts} & ${constraint} & ${deps} \\\\ \\hline`;
+      });
+      const table = [
+        '\\begin{center}',
+        '\\begin{tabular}{|c|c|c|c|}',
+        '\\hline',
+        '\\textbf{Подзадача} &',
+        '\\textbf{Баллы} &',
+        '\\textbf{Дополнительные ограничения} &',
+        '\\textbf{Необходимые подзадачи}',
+        '\\\\ \\hline',
+        ...rows,
+        '\\end{tabular}',
+        '\\end{center}',
+      ].join('\n');
+      setForm(f => ({ ...f, scoring: table }));
+      setActiveSection('scoring');
+      setMsg('Scoring table generated — review and Save');
+    } catch (err: unknown) { setError((err as Error).message); }
+  }
+
   async function handleCompile() {
     setCompiling(true); setError(''); setMsg(''); setCompileLog(''); setShowLog(false);
     try {
@@ -241,6 +280,14 @@ export default function StatementTab({ problemId }: Props) {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '10px 12px', overflow: 'hidden' }}>
             {SECTIONS.map(s => activeSection === s.key && (
               <React.Fragment key={s.key}>
+                {s.key === 'scoring' && (
+                  <div style={{ marginBottom: 6, flexShrink: 0 }}>
+                    <button className="btn btn-sm" onClick={generateScoringTable}
+                      title="Build a LaTeX scoring table from the test groups (points = sum of test points, dependencies = required subtasks)">
+                      Generate scoring table
+                    </button>
+                  </div>
+                )}
                 <LaTeXEditor value={form[s.key]} onChange={set(s.key)} placeholder={`${s.label}…`} />
                 <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)', lineHeight: 1.8, flexShrink: 0 }}>
                   <code style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$x$</code>{' '}инлайн{'  '}
