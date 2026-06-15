@@ -27,7 +27,6 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [newTest, setNewTest] = useState({ method: 'manual', input: '', cmd: '', description: '', sample: false, group: '', points: '0' });
-  const [newGroup, setNewGroup] = useState({ name: '', points: '0', pointsPolicy: 'complete-group', feedbackPolicy: 'icpc', dependencies: '' });
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -331,24 +330,10 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     finally { setBulkWorking(false); }
   }
 
-  // ── Groups ────────────────────────────────────────────────────────────────
-  async function handleSaveGroup(e: React.FormEvent) {
-    e.preventDefault(); setMsg(''); setError('');
-    try {
-      await problems.saveTestGroup({
-        problemId, groupName: newGroup.name, points: newGroup.points,
-        pointsPolicy: newGroup.pointsPolicy, feedbackPolicy: newGroup.feedbackPolicy,
-        dependencies: newGroup.dependencies,
-      });
-      setNewGroup({ name: '', points: '0', pointsPolicy: 'complete-group', feedbackPolicy: 'icpc', dependencies: '' });
-      setMsg('Group saved'); reload();
-    } catch (err: unknown) { setError((err as Error).message); }
-  }
-
+  // ── Groups (derived from tests' group names) ───────────────────────────────
   async function updateGroupField(g: TestGroup, field: string, value: string) {
     try {
       const patch: Record<string, string | number> = { problemId, groupName: g.name };
-      if (field === 'points') patch.points = value;
       if (field === 'pointsPolicy') patch.pointsPolicy = value;
       if (field === 'feedbackPolicy') patch.feedbackPolicy = value;
       await problems.saveTestGroup(patch as Record<string, unknown>);
@@ -621,15 +606,20 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
         </div>
       )}
 
-      {/* ── Groups section ─────────────────────────────────────────────── */}
+      {/* ── Groups section (auto-derived from tests' group names) ─────────── */}
       {groups.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div className="section-header" style={{ marginBottom: 8 }}>Groups points policy and dependencies</div>
+          <div className="section-header" style={{ marginBottom: 4 }}>Test groups</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+            Groups are taken from the <strong>Group</strong> column of the tests above — set a group name on
+            a test to add it here. A group's points are the sum of its tests' points. Choose the policies and
+            dependencies for each group below.
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="poly-table" style={{ minWidth: 600 }}>
               <thead>
                 <tr>
-                  <th style={{ width: 60 }}>Name</th>
+                  <th style={{ width: 70 }}>Name</th>
                   <th style={{ width: 50 }}>Tests</th>
                   <th style={{ width: 60 }}>Points</th>
                   <th style={{ width: 160 }}>Points policy</th>
@@ -640,7 +630,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               <tbody>
                 {groups.map(g => (
                   <GroupRow
-                    key={g.id}
+                    key={g.name}
                     group={g}
                     testCount={tests.filter(t => t.group_name === g.name).length}
                     onUpdateField={updateGroupField}
@@ -653,53 +643,6 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
           </div>
         </div>
       )}
-
-      {/* ── Add Group form ─────────────────────────────────────────────── */}
-      <details style={{ marginBottom: 16 }}>
-        <summary style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: 12, marginBottom: 4 }}>
-          {groups.length === 0 ? '+ Add Group / Enable Groups' : '+ Add/Edit Group'}
-        </summary>
-        <div style={{ paddingTop: 8 }}>
-          <form onSubmit={handleSaveGroup}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 8 }}>
-              <label style={{ fontSize: 12 }}>
-                Name:&nbsp;
-                <input value={newGroup.name} onChange={e => setNewGroup({ ...newGroup, name: e.target.value })}
-                  required style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Points:&nbsp;
-                <input type="number" value={newGroup.points} onChange={e => setNewGroup({ ...newGroup, points: e.target.value })}
-                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Points policy:&nbsp;
-                <select value={newGroup.pointsPolicy} onChange={e => setNewGroup({ ...newGroup, pointsPolicy: e.target.value })}
-                  style={{ fontSize: 12 }}>
-                  <option value="each-test">EACH_TEST</option>
-                  <option value="complete-group">COMPLETE_GROUP</option>
-                </select>
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Feedback:&nbsp;
-                <select value={newGroup.feedbackPolicy} onChange={e => setNewGroup({ ...newGroup, feedbackPolicy: e.target.value })}
-                  style={{ fontSize: 12 }}>
-                  <option value="complete">COMPLETE</option>
-                  <option value="icpc">ICPC</option>
-                  <option value="points">POINTS</option>
-                  <option value="none">NONE</option>
-                </select>
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Deps (comma):&nbsp;
-                <input value={newGroup.dependencies} onChange={e => setNewGroup({ ...newGroup, dependencies: e.target.value })}
-                  placeholder="0,1" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
-              </label>
-              <button type="submit" className="btn btn-primary btn-sm">Save Group</button>
-            </div>
-          </form>
-        </div>
-      </details>
 
       {/* ── Add Test form ──────────────────────────────────────────────── */}
       <details open>
@@ -771,22 +714,13 @@ function GroupRow({
   onRemoveDep: (g: TestGroup, dep: string) => void;
   onAddDep: (g: TestGroup, dep: string) => void;
 }) {
-  const [editPts, setEditPts] = useState(String(group.points));
   const [addingDep, setAddingDep] = useState('');
 
   return (
     <tr>
       <td><strong>{group.name}</strong></td>
       <td style={{ textAlign: 'center', color: 'var(--muted)' }}>{testCount}</td>
-      <td>
-        <input
-          value={editPts}
-          onChange={e => setEditPts(e.target.value)}
-          onBlur={() => onUpdateField(group, 'points', editPts)}
-          onKeyDown={e => e.key === 'Enter' && onUpdateField(group, 'points', editPts)}
-          style={{ width: 52, fontSize: 11, padding: '1px 4px', border: '1px solid var(--border)' }}
-        />
-      </td>
+      <td style={{ textAlign: 'center', fontWeight: 'bold' }} title="Sum of the group's tests' points">{group.points}</td>
       <td>
         <select
           value={group.points_policy}

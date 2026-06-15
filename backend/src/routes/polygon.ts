@@ -6,7 +6,7 @@ import { getAuthUser } from './auth';
 import { db, getProblemDir } from '../db/schema';
 import {
   getProblem, listSolutions, getAsset, listStatements,
-  getTestset, listTests, updateProblem, setTags, canAccessProblem,
+  getTestset, listTests, updateProblem, setTags, canAccessProblem, getDerivedTestGroups,
 } from '../services/problems';
 import { importPackage } from '../services/import';
 
@@ -352,8 +352,12 @@ export async function pushToPolygon(
   // 9. Tests (with groups and per-test points)
   const testset = getTestset(localProblemId, 'tests');
   if (testset) {
-    const groupsEnabled = testset.groups_enabled === 1;
-    const pointsEnabled = testset.points_enabled === 1;
+    // Groups are derived from the tests' group names; their points are the sum
+    // of their tests' points. Grouping/points are considered on whenever such
+    // data exists, regardless of the stored flags.
+    const groups = getDerivedTestGroups(testset.id);
+    const pointsEnabled = testset.points_enabled === 1 || listTests(testset.id).some(t => (t.points as number) > 0);
+    const groupsEnabled = testset.groups_enabled === 1 || groups.length > 0;
 
     if (groupsEnabled) {
       await tryStep('Enable test groups', async () => {
@@ -366,16 +370,6 @@ export async function pushToPolygon(
       });
     }
 
-    // Load groups to know per-group policy (for deciding whether to send testPoints)
-    type GroupRow = { id: number; name: string; points: number; points_policy: string; feedback_policy: string; dep_str: string | null };
-    const groups = db.prepare(
-      `SELECT tg.id, tg.name, tg.points, tg.points_policy, tg.feedback_policy,
-              GROUP_CONCAT(gd.depends_on, ',') as dep_str
-       FROM test_groups tg
-       LEFT JOIN group_dependencies gd ON gd.group_id = tg.id
-       WHERE tg.testset_id = ?
-       GROUP BY tg.id`
-    ).all(testset.id) as GroupRow[];
     const groupPolicyMap: Record<string, string> = {};
     for (const g of groups) groupPolicyMap[g.name] = g.points_policy;
 
@@ -463,7 +457,7 @@ export async function pushToPolygon(
           feedbackPolicy: FEEDBACK_MAP[g.feedback_policy] ?? g.feedback_policy.toUpperCase(),
         };
         if ((g.points as number) > 0) groupParams.points = String(g.points);
-        if (g.dep_str) groupParams.dependencies = g.dep_str;
+        if (g.dependencies.length > 0) groupParams.dependencies = g.dependencies.join(',');
         await polygonPost('problem.saveTestGroup', groupParams, key, secret);
       });
     }

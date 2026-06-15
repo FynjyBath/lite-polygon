@@ -9,7 +9,7 @@ import {
   listSolutions, getSolution, getSolutionByPath, upsertSolution, deleteSolution,
   getAsset, upsertAsset, listFiles, upsertFile,
   getTestset, getOrCreateTestset, listTests, getTest, upsertTest, deleteTest as deleteTestDb,
-  upsertTestGroup, getTestGroups, getGroupDependencies,
+  upsertTestGroup, getTestGroups, getGroupDependencies, getDerivedTestGroups,
   listCheckerTests, upsertCheckerTest,
   listValidatorTests, upsertValidatorTest,
   listStatements, getStatement, upsertStatement,
@@ -660,6 +660,10 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (body.points !== undefined) updates.points = parseFloat(body.points) || 0;
     if (body.description !== undefined) updates.description = body.description;
     upsertTest(testset.id, testIndex, updates);
+    // Assigning a group/points implicitly turns on grouping/points for the
+    // testset, so groups derived from test names take effect everywhere.
+    if (body.group && body.group.trim()) db.prepare('UPDATE testsets SET groups_enabled = 1 WHERE id = ?').run(testset.id);
+    if (body.points !== undefined && (parseFloat(body.points) || 0) > 0) db.prepare('UPDATE testsets SET points_enabled = 1 WHERE id = ?').run(testset.id);
     updateProblem(id, { modified: 1 });
     return ok(null);
   });
@@ -870,14 +874,14 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!getProblemForUser(id, user, reply)) return;
     const testset = getTestset(id, tsName ?? 'tests');
     if (!testset) return ok([]);
-    const groups = getTestGroups(testset.id);
-    return ok(groups.map(g => ({
-      ...g,
-      dependencies: getGroupDependencies(g.id),
-    })));
+    // Groups are derived from the tests' group names; points = sum of test points.
+    return ok(getDerivedTestGroups(testset.id));
   });
 
-  // problem.saveTestGroup
+  // problem.saveTestGroup — set a group's policy/feedback/dependencies. Groups
+  // themselves come from the tests' group names and their points are the sum of
+  // the tests' points, so `points` is NOT stored here. Only the fields present
+  // in the request are updated (so changing one field never wipes the others).
   app.post('/api/problem.saveTestGroup', async (req, reply) => {
     const user = await auth(req, reply);
     const body = req.body as Record<string, string>;
@@ -885,12 +889,12 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!id || !body.groupName) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and groupName required' });
     if (!getProblemForUser(id, user, reply)) return;
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
-    upsertTestGroup(testset.id, body.groupName, {
-      points: parseFloat(body.points ?? '0') || 0,
-      pointsPolicy: body.pointsPolicy ?? 'each-test',
-      feedbackPolicy: body.feedbackPolicy ?? 'complete',
-      dependencies: body.dependencies ? body.dependencies.split(',').filter(Boolean) : [],
-    });
+    const data: { pointsPolicy?: string; feedbackPolicy?: string; dependencies?: string[] } = {};
+    if (body.pointsPolicy) data.pointsPolicy = body.pointsPolicy;
+    if (body.feedbackPolicy) data.feedbackPolicy = body.feedbackPolicy;
+    if (body.dependencies !== undefined) data.dependencies = body.dependencies.split(',').map(s => s.trim()).filter(Boolean);
+    upsertTestGroup(testset.id, body.groupName, data);
+    db.prepare('UPDATE testsets SET groups_enabled = 1 WHERE id = ?').run(testset.id);
     updateProblem(id, { modified: 1 });
     return ok(null);
   });

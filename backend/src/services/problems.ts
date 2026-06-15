@@ -461,6 +461,42 @@ export function getTestGroups(testsetId: number) {
   }>;
 }
 
+export interface DerivedTestGroup {
+  id: number; testset_id: number; name: string;
+  points: number; test_count: number;
+  points_policy: string; feedback_policy: string; dependencies: string[];
+}
+
+/**
+ * Groups are derived from the tests' `group_name` field — there is no separate
+ * "create group" step. Each distinct non-empty group name is a group; its
+ * points are the SUM of the points of its tests. Points policy, feedback policy
+ * and dependencies come from the (lazily created) test_groups metadata row, or
+ * sensible defaults when none exists yet.
+ */
+export function getDerivedTestGroups(testsetId: number): DerivedTestGroup[] {
+  const rows = db.prepare(
+    `SELECT group_name AS name, COALESCE(SUM(points), 0) AS points, COUNT(*) AS test_count
+       FROM tests
+      WHERE testset_id = ? AND group_name IS NOT NULL AND TRIM(group_name) != ''
+      GROUP BY group_name ORDER BY group_name`
+  ).all(testsetId) as { name: string; points: number; test_count: number }[];
+  return rows.map(r => {
+    const meta = db.prepare('SELECT id, points_policy, feedback_policy FROM test_groups WHERE testset_id = ? AND name = ?')
+      .get(testsetId, r.name) as { id: number; points_policy: string; feedback_policy: string } | undefined;
+    return {
+      id: meta?.id ?? 0,
+      testset_id: testsetId,
+      name: r.name,
+      points: r.points,
+      test_count: r.test_count,
+      points_policy: meta?.points_policy ?? 'complete-group',
+      feedback_policy: meta?.feedback_policy ?? 'icpc',
+      dependencies: meta ? getGroupDependencies(meta.id) : [],
+    };
+  });
+}
+
 export function getGroupDependencies(groupId: number): string[] {
   const rows = db.prepare('SELECT depends_on FROM group_dependencies WHERE group_id = ?').all(groupId) as { depends_on: string }[];
   return rows.map(r => r.depends_on);
@@ -483,7 +519,7 @@ export function upsertTestGroup(testsetId: number, name: string, data: { points?
   } else {
     const result = db.prepare(
       'INSERT INTO test_groups (testset_id, name, points, points_policy, feedback_policy) VALUES (?, ?, ?, ?, ?)'
-    ).run(testsetId, name, data.points ?? 0, data.pointsPolicy ?? 'each-test', data.feedbackPolicy ?? 'complete');
+    ).run(testsetId, name, data.points ?? 0, data.pointsPolicy ?? 'complete-group', data.feedbackPolicy ?? 'icpc');
     groupId = result.lastInsertRowid as number;
   }
   if (data.dependencies !== undefined) {
