@@ -90,9 +90,9 @@ export default function ContestPage() {
       {/* Contest properties */}
       <div className="section-header">Contest properties</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', marginBottom: 16 }}>
-        <label style={{ fontSize: 12 }}>Name<br /><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: 240, border: '1px solid #aaa', padding: '3px 6px' }} /></label>
-        <label style={{ fontSize: 12 }}>Date<br /><input value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} placeholder="15.06.2026" style={{ width: 120, border: '1px solid #aaa', padding: '3px 6px' }} /></label>
-        <label style={{ fontSize: 12 }}>Location<br /><input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: 200, border: '1px solid #aaa', padding: '3px 6px' }} /></label>
+        <label style={{ fontSize: 12 }}>Name<br /><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: 240, border: '1px solid var(--border)', padding: '3px 6px' }} /></label>
+        <label style={{ fontSize: 12 }}>Date<br /><input value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} placeholder="15.06.2026" style={{ width: 120, border: '1px solid var(--border)', padding: '3px 6px' }} /></label>
+        <label style={{ fontSize: 12 }}>Location<br /><input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: 200, border: '1px solid var(--border)', padding: '3px 6px' }} /></label>
         <label style={{ fontSize: 12 }}>Language<br /><select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })} style={{ padding: '3px 6px' }}>{LANGS.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
         <button className="btn btn-primary btn-sm" onClick={saveFields}>Save</button>
       </div>
@@ -127,7 +127,7 @@ export default function ContestPage() {
               <td><button className="btn btn-sm btn-danger" onClick={() => removeProblem(p.problemId)}>Remove</button></td>
             </tr>
           ))}
-          {probs.length === 0 && <tr><td colSpan={5} style={{ color: '#888', textAlign: 'center', padding: 10 }}>No problems — add some below</td></tr>}
+          {probs.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--muted)', textAlign: 'center', padding: 10 }}>No problems — add some below</td></tr>}
         </tbody>
       </table>
 

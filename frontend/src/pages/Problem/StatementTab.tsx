@@ -42,8 +42,8 @@ function LaTeXEditor({ value, onChange, placeholder }: {
         width: '100%', flex: 1,
         fontFamily: '"Fira Code", "Consolas", "Courier New", monospace',
         fontSize: 13, lineHeight: 1.6, resize: 'none',
-        border: '1px solid #d0d7de', borderRadius: 4, padding: '10px 12px',
-        background: '#fff', color: '#1f2328', outline: 'none',
+        border: '1px solid var(--border)', borderRadius: 4, padding: '10px 12px',
+        background: 'var(--surface)', color: 'var(--fg)', outline: 'none',
         boxSizing: 'border-box', display: 'block',
       }}
     />
@@ -178,7 +178,7 @@ export default function StatementTab({ problemId }: Props) {
               <option value="__custom__">other…</option>
             </select>
             {newLangInput === '__custom__' && (
-              <input autoFocus placeholder="e.g. czech" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }}
+              <input autoFocus placeholder="e.g. czech" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }}
                 onChange={e => setNewLangInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateLang()} />
             )}
@@ -206,24 +206,24 @@ export default function StatementTab({ problemId }: Props) {
       </div>
 
       {/* 50/50 split pane */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, border: '1px solid #d0d7de', borderRadius: 4, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
 
         {/* Left: editor */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #d0d7de', background: '#fff', minHeight: 600 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--surface)', minHeight: 600 }}>
           {/* Name field */}
-          <div style={{ padding: '7px 12px', borderBottom: '1px solid #e8eaed', background: '#f6f8fa', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>Название:</span>
+          <div style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Название:</span>
             <input
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Название задачи…"
-              style={{ flex: 1, border: '1px solid #d0d7de', borderRadius: 4, padding: '3px 8px',
-                fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', color: '#1f2328' }}
+              style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 8px',
+                fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--surface)', color: 'var(--fg)' }}
             />
           </div>
 
           {/* Section tabs */}
-          <div style={{ display: 'flex', background: '#f6f8fa', borderBottom: '1px solid #e8eaed', overflowX: 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', overflowX: 'auto', flexShrink: 0 }}>
             {SECTIONS.map(s => (
               <button key={s.key} onClick={() => setActiveSection(s.key)} style={{
                 padding: '6px 12px', fontSize: 12, background: 'transparent', border: 'none',
@@ -242,12 +242,12 @@ export default function StatementTab({ problemId }: Props) {
             {SECTIONS.map(s => activeSection === s.key && (
               <React.Fragment key={s.key}>
                 <LaTeXEditor value={form[s.key]} onChange={set(s.key)} placeholder={`${s.label}…`} />
-                <div style={{ marginTop: 6, fontSize: 11, color: '#8c959f', lineHeight: 1.8, flexShrink: 0 }}>
-                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$x$</code>{' '}инлайн{'  '}
-                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$$x$$</code>{' '}блок{'  '}
-                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\textbf{'{}'}</code>{'  '}
-                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\textit{'{}'}</code>{'  '}
-                  <code style={{ background: '#f0f4f8', border: '1px solid #d0d7de', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\texttt{'{}'}</code>{'  '}
+                <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)', lineHeight: 1.8, flexShrink: 0 }}>
+                  <code style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$x$</code>{' '}инлайн{'  '}
+                  <code style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>$$x$$</code>{' '}блок{'  '}
+                  <code style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\textbf{'{}'}</code>{'  '}
+                  <code style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\textit{'{}'}</code>{'  '}
+                  <code style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '0 4px', borderRadius: 3, fontSize: 11 }}>\texttt{'{}'}</code>{'  '}
                   Tab = 2 пробела
                 </div>
               </React.Fragment>
@@ -255,19 +255,19 @@ export default function StatementTab({ problemId }: Props) {
           </div>
 
           {/* Resources */}
-          <details style={{ borderTop: '1px solid #e8eaed', background: '#f6f8fa', flexShrink: 0 }}>
-            <summary style={{ padding: '6px 12px', fontSize: 11, color: '#57606a', cursor: 'pointer', listStyle: 'none', userSelect: 'none' }}>
+          <details style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', flexShrink: 0 }}>
+            <summary style={{ padding: '6px 12px', fontSize: 11, color: 'var(--muted)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' }}>
               ▸ Ресурсы ({resources.length})
             </summary>
             <div style={{ padding: '6px 12px 10px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
                 {resources.map(name => (
-                  <a key={name} style={{ fontSize: 11, color: '#0969da', fontFamily: 'monospace',
-                    background: '#ddf4ff', border: '1px solid #b6e3ff', padding: '1px 6px', borderRadius: 3, textDecoration: 'none' }}
+                  <a key={name} style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'monospace',
+                    background: 'var(--info-bg)', border: '1px solid #b6e3ff', padding: '1px 6px', borderRadius: 3, textDecoration: 'none' }}
                     href={`/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${encodeURIComponent(name)}`}
                     target="_blank" rel="noreferrer">{name}</a>
                 ))}
-                {resources.length === 0 && <span style={{ color: '#999', fontSize: 11 }}>Нет файлов</span>}
+                {resources.length === 0 && <span style={{ color: 'var(--muted)', fontSize: 11 }}>Нет файлов</span>}
               </div>
               <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
                 {uploadingResource ? 'Загрузка…' : '+ Загрузить'}

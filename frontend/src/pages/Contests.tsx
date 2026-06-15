@@ -43,7 +43,7 @@ export default function ContestsPage() {
 
         <form onSubmit={handleCreate} className="flex" style={{ margin: '8px 0 14px' }}>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="New contest name…"
-            style={{ width: 280, border: '1px solid #aaa', padding: '4px 8px' }} />
+            style={{ width: 280, border: '1px solid var(--border)', padding: '4px 8px' }} />
           <button type="submit" className="btn btn-primary" disabled={creating}>{creating ? 'Creating…' : 'Create contest'}</button>
         </form>
 
@@ -57,7 +57,7 @@ export default function ContestsPage() {
                 <tr key={c.id}>
                   <td>{c.id}</td>
                   <td><a className="poly-link" style={{ cursor: 'pointer' }} onClick={() => navigate(`/contest/${c.id}`)}>{c.name || '(unnamed)'}</a></td>
-                  <td style={{ color: '#555', fontSize: 12 }}>{c.owner_username}</td>
+                  <td style={{ color: 'var(--muted)', fontSize: 12 }}>{c.owner_username}</td>
                   <td>{c.date}</td>
                   <td>{c.location}</td>
                   <td>{c.language}</td>
@@ -69,7 +69,7 @@ export default function ContestsPage() {
                   </td>
                 </tr>
               ))}
-              {list.length === 0 && <tr><td colSpan={7} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No contests yet</td></tr>}
+              {list.length === 0 && <tr><td colSpan={7} style={{ color: 'var(--muted)', textAlign: 'center', padding: 12 }}>No contests yet</td></tr>}
             </tbody>
           </table>
         )}

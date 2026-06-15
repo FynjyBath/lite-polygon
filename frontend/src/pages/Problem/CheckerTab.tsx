@@ -90,7 +90,7 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
       {error && <div className="alert alert-error">{error}</div>}
 
       {checker && (
-        <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f4f4f4', border: '1px solid #ddd' }}>
+        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <strong>Current checker:</strong>{' '}
           <span className="source-type">{checker.name || checker.source_path}</span>
           {' '}(<span className="source-type">{checker.source_type || 'testlib'}</span>)
@@ -121,7 +121,7 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
               ))}
             </select>
           </div>
-          <div style={{ fontSize: 11, color: '#888', marginLeft: 120, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 120, marginBottom: 8 }}>
             Standard checkers require the checker file to be present in the <code>files/</code> directory
             (e.g., from an imported Polygon package).
           </div>
@@ -183,7 +183,7 @@ export default function CheckerTab({ problemId, info, onUpdate }: Props) {
               <td className={`verdict-${t.run_verdict}`}>{t.run_verdict || '—'}</td>
             </tr>
           ))}
-          {tests.length === 0 && <tr><td colSpan={6} style={{ color: '#888' }}>No checker tests</td></tr>}
+          {tests.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--muted)' }}>No checker tests</td></tr>}
         </tbody>
       </table>
 

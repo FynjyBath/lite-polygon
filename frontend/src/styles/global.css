@@ -398,18 +398,32 @@ h1, h2, h3 { font-size: 14px; margin: 8px 0; }
 :root {
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f9f9f9;
+  --surface-2: #f6f8fa;
+  --surface-3: #eef0f3;
   --border: #dddddd;
   --fg: #222222;
   --muted: #666666;
+  --accent: #2264b0;
+  --info-bg: #eef4ff;
+  --info-border: #cce;
+  --warn-bg: #fff3cd;
+  --warn-border: #ffc107;
+  --ok-bg: #eefaef;
 }
 [data-theme="dark"] {
   --bg: #1e1e1e;
   --surface: #252526;
   --surface-2: #2d2d30;
+  --surface-3: #33333a;
   --border: #3e3e42;
   --fg: #d4d4d4;
   --muted: #9aa0a6;
+  --accent: #4ea1ff;
+  --info-bg: #20303f;
+  --info-border: #355270;
+  --warn-bg: #3a3320;
+  --warn-border: #6b5d2a;
+  --ok-bg: #1f3a24;
 }
 
 [data-theme="dark"] body { background: var(--bg); color: var(--fg); }

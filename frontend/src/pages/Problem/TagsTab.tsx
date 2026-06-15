@@ -44,12 +44,12 @@ export default function TagsTab({ problemId, info, onUpdate }: Props) {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
         {tags.map(t => (
-          <span key={t} style={{ background: '#e0e8f0', border: '1px solid #99aabb', borderRadius: 3, padding: '2px 8px', fontSize: 12 }}>
+          <span key={t} style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 3, padding: '2px 8px', fontSize: 12 }}>
             {t}
-            <button onClick={() => removeTag(t)} style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}>×</button>
+            <button onClick={() => removeTag(t)} style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}>×</button>
           </span>
         ))}
-        {tags.length === 0 && <span style={{ color: '#888', fontSize: 12 }}>No tags</span>}
+        {tags.length === 0 && <span style={{ color: 'var(--muted)', fontSize: 12 }}>No tags</span>}
       </div>
 
       <form onSubmit={handleSave}>

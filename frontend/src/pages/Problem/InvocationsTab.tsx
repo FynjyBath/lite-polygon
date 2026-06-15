@@ -237,7 +237,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                   else setSelectedSols(selectedSols.filter(x => x !== s.id));
                 }}
               />
-              {s.source_path} <span style={{ color: '#888' }}>({s.tag})</span>
+              {s.source_path} <span style={{ color: 'var(--muted)' }}>({s.tag})</span>
             </label>
           ))}
         </div>
@@ -249,7 +249,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
         </thead>
         <tbody>
           {invocations.map(inv => (
-            <tr key={inv.id} style={active?.inv.id === inv.id ? { background: '#f0f4ff' } : undefined}>
+            <tr key={inv.id} style={active?.inv.id === inv.id ? { background: 'var(--info-bg)' } : undefined}>
               <td>{inv.id}</td>
               <td style={{ fontSize: 11 }}>{inv.created_at.slice(0, 16)}</td>
               <td style={{ color: inv.state === 'DONE' ? 'green' : inv.state === 'FAILED' ? 'red' : '#c60' }}>
@@ -259,7 +259,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
               <td><button className="btn btn-sm" onClick={() => handleView(inv)}>View</button></td>
             </tr>
           ))}
-          {invocations.length === 0 && <tr><td colSpan={4} style={{ color: '#888' }}>No invocations</td></tr>}
+          {invocations.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>No invocations</td></tr>}
         </tbody>
       </table>
 
@@ -284,7 +284,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
           <div style={{ overflowX: 'auto' }}>
             <table className="poly-table" style={{ fontSize: 11, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f0f0f0' }}>
+                <tr style={{ background: 'var(--surface-2)' }}>
                   <th style={{ minWidth: 36, textAlign: 'center' }}>#</th>
                   {matrix.solIds.map(solId => {
                     const sol = solutions.find(s => s.id === solId);
@@ -292,7 +292,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                     return (
                       <th key={solId} style={{ minWidth: 90, fontFamily: 'monospace', fontSize: 10, fontWeight: 'normal', padding: '3px 6px' }}>
                         <div style={{ fontWeight: 'bold' }}>{shortName}</div>
-                        {sol?.tag && <div style={{ color: '#888', fontSize: 9 }}>({sol.tag})</div>}
+                        {sol?.tag && <div style={{ color: 'var(--muted)', fontSize: 9 }}>({sol.tag})</div>}
                       </th>
                     );
                   })}
@@ -304,13 +304,13 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                   const test = active.tests.find(t => t.idx === ti);
                   return (
                     <tr key={ti}>
-                      <td style={{ textAlign: 'center', color: '#666', padding: '2px 4px' }}>
+                      <td style={{ textAlign: 'center', color: 'var(--muted)', padding: '2px 4px' }}>
                         {ti}{test?.sample ? <span title="Sample" style={{ color: '#090', marginLeft: 2 }}>s</span> : null}
-                        {test?.group_name ? <span style={{ color: '#888', marginLeft: 2, fontSize: 9 }}>[{test.group_name}]</span> : null}
+                        {test?.group_name ? <span style={{ color: 'var(--muted)', marginLeft: 2, fontSize: 9 }}>[{test.group_name}]</span> : null}
                       </td>
                       {matrix.solIds.map(solId => {
                         const run = matrix.map.get(`${solId}_${ti}`);
-                        if (!run) return <td key={solId} style={{ color: '#ccc', textAlign: 'center', padding: '2px 4px' }}>—</td>;
+                        if (!run) return <td key={solId} style={{ color: 'var(--muted)', textAlign: 'center', padding: '2px 4px' }}>—</td>;
                         const isOk = run.verdict === 'OK';
                         const isSlowest = isOk && run.time_ms === matrix.colSlowest.get(solId) && run.time_ms > 0;
                         const isNearTL = isOk && timeLimit && run.time_ms > timeLimit / 2;
@@ -325,7 +325,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                           >
                             <span style={{ fontWeight: 'bold', color: isOk ? '#060' : '#900' }}>{label}</span>
                             {' '}
-                            <span style={{ color: '#555', fontSize: 10 }}>{run.time_ms}/{Math.round(run.memory_bytes / 1024 / 1024)}</span>
+                            <span style={{ color: 'var(--muted)', fontSize: 10 }}>{run.time_ms}/{Math.round(run.memory_bytes / 1024 / 1024)}</span>
                           </td>
                         );
                       })}
@@ -338,8 +338,8 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                   const gDef = active.groups.find(g => g.name === gn);
                   return (
                     <React.Fragment key={`g_${gn}`}>
-                      <tr style={{ background: '#f5f5f5', fontStyle: 'italic' }}>
-                        <td style={{ color: '#555', fontSize: 10, padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                      <tr style={{ background: 'var(--surface-2)', fontStyle: 'italic' }}>
+                        <td style={{ color: 'var(--muted)', fontSize: 10, padding: '2px 4px', whiteSpace: 'nowrap' }}>
                           Group {gn} passed
                         </td>
                         {matrix.solIds.map(solId => {
@@ -352,8 +352,8 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                         })}
                       </tr>
                       {gDef && gDef.points > 0 && (
-                        <tr style={{ background: '#f5f5f5', fontStyle: 'italic' }}>
-                          <td style={{ color: '#555', fontSize: 10, padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                        <tr style={{ background: 'var(--surface-2)', fontStyle: 'italic' }}>
+                          <td style={{ color: 'var(--muted)', fontSize: 10, padding: '2px 4px', whiteSpace: 'nowrap' }}>
                             Group {gn} points
                           </td>
                           {matrix.solIds.map(solId => {
@@ -373,8 +373,8 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                 })}
 
                 {/* Σ passed tests */}
-                <tr style={{ background: '#eef4ff', fontWeight: 'bold' }}>
-                  <td style={{ padding: '2px 4px', color: '#333', fontSize: 10 }}>Σ passed</td>
+                <tr style={{ background: 'var(--info-bg)', fontWeight: 'bold' }}>
+                  <td style={{ padding: '2px 4px', color: 'var(--fg)', fontSize: 10 }}>Σ passed</td>
                   {matrix.solIds.map(solId => {
                     const st = matrix.solStats.get(solId);
                     return (
@@ -386,8 +386,8 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                 </tr>
 
                 {/* max row */}
-                <tr style={{ background: '#eef4ff' }}>
-                  <td style={{ padding: '2px 4px', color: '#333', fontSize: 10 }}>max.</td>
+                <tr style={{ background: 'var(--info-bg)' }}>
+                  <td style={{ padding: '2px 4px', color: 'var(--fg)', fontSize: 10 }}>max.</td>
                   {matrix.solIds.map(solId => {
                     const st = matrix.solStats.get(solId);
                     if (!st) return <td key={solId} style={{ textAlign: 'center', padding: '2px 4px' }}>—</td>;
@@ -404,7 +404,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
 
           {/* Cell detail panel */}
           {cellDetail && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: '#f9f9f9', border: '1px solid #ddd', fontSize: 12 }}>
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12 }}>
               <div className="flex-between" style={{ marginBottom: 6 }}>
                 <strong>
                   Test {cellDetail.testIdx} — {cellDetail.sol?.source_path ?? `#${cellDetail.solId}`}
@@ -423,7 +423,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
               </div>
               {cellDetail.run.stderr_preview && (
                 <div style={{ marginTop: 6 }}>
-                  <div style={{ color: '#666', marginBottom: 2 }}>Checker / stderr output:</div>
+                  <div style={{ color: 'var(--muted)', marginBottom: 2 }}>Checker / stderr output:</div>
                   <div className="code-view" style={{ maxHeight: 120, fontSize: 10 }}>{cellDetail.run.stderr_preview}</div>
                 </div>
               )}

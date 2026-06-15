@@ -50,7 +50,7 @@ export default function ShareManager({ load, add, remove, note }: Props) {
       </div>
       <form onSubmit={handleAdd} className="flex" style={{ gap: 6 }}>
         <input value={username} onChange={e => setUsername(e.target.value)} placeholder="username to share with…"
-          style={{ width: 220, border: '1px solid #aaa', padding: '3px 8px' }} />
+          style={{ width: 220, border: '1px solid var(--border)', padding: '3px 8px' }} />
         <button type="submit" className="btn btn-sm btn-primary" disabled={busy || !username.trim()}>Share</button>
       </form>
     </div>

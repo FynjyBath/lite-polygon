@@ -18,7 +18,7 @@ const LANGUAGE_OPTIONS = [
 const TAG_OPTIONS = [
   { value: 'main',                                    label: 'Main correct solution',                    color: '#007700' },
   { value: 'accepted',                                label: 'Accepted',                                 color: '#007700' },
-  { value: 'rejected',                                label: 'Rejected',                                 color: '#888888' },
+  { value: 'rejected',                                label: 'Rejected',                                 color: 'var(--muted)' },
   { value: 'wrong-answer',                            label: 'Wrong answer',                             color: '#cc0000' },
   { value: 'presentation-error',                      label: 'Presentation error',                       color: '#cc0000' },
   { value: 'time-limit-exceeded',                     label: 'Time limit exceeded',                      color: '#cc0000' },
@@ -26,11 +26,11 @@ const TAG_OPTIONS = [
   { value: 'time-limit-exceeded-or-accepted',         label: 'Time limit exceeded or accepted',          color: '#cc6600' },
   { value: 'time-limit-exceeded-or-memory-limit-exceeded', label: 'TLE or MLE',                         color: '#cc6600' },
   { value: 'runtime-error',                           label: 'Runtime error',                            color: '#cc0000' },
-  { value: 'do-not-run',                              label: 'Do not run',                               color: '#888888' },
+  { value: 'do-not-run',                              label: 'Do not run',                               color: 'var(--muted)' },
 ];
 
 function tagInfo(tag: string) {
-  return TAG_OPTIONS.find(t => t.value === tag) ?? { label: tag, color: '#333' };
+  return TAG_OPTIONS.find(t => t.value === tag) ?? { label: tag, color: 'var(--fg)' };
 }
 
 function langLabel(sourceType: string) {
@@ -192,7 +192,7 @@ export default function SolutionsTab({ problemId }: Props) {
             <th>Modified</th>
             <th>Type</th>
             <th style={{ textAlign: 'right' }}>
-              <span style={{ color: '#00c' }}>Delete&nbsp;Download&nbsp;Edit&nbsp;View</span>
+              <span style={{ color: 'var(--accent)' }}>Delete&nbsp;Download&nbsp;Edit&nbsp;View</span>
             </th>
           </tr>
         </thead>
@@ -265,18 +265,18 @@ export default function SolutionsTab({ problemId }: Props) {
             );
           })}
           {solutions.length === 0 && (
-            <tr><td colSpan={7} style={{ color: '#888', textAlign: 'center', padding: 16 }}>No solution files</td></tr>
+            <tr><td colSpan={7} style={{ color: 'var(--muted)', textAlign: 'center', padding: 16 }}>No solution files</td></tr>
           )}
         </tbody>
       </table>
 
-      <p style={{ fontSize: 12, color: '#555', margin: '4px 0' }}>Upload solution files here.</p>
-      <p style={{ fontSize: 12, color: '#555', margin: '4px 0' }}>There should be exactly one "Main correct solution" (also known as "model solution"). It will be used to generate jury answers.</p>
+      <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0' }}>Upload solution files here.</p>
+      <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0' }}>There should be exactly one "Main correct solution" (also known as "model solution"). It will be used to generate jury answers.</p>
 
       {/* Edit / View modal */}
       {editSol && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 4, width: '80vw', maxWidth: 900, maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 16 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 4, width: '80vw', maxWidth: 900, maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <strong>{editSol.sol.source_path}</strong>
               <button className="btn btn-sm" onClick={() => setEditSol(null)}>Close</button>
@@ -303,7 +303,7 @@ export default function SolutionsTab({ problemId }: Props) {
       {/* New file dialog */}
       {newDialog && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 4, width: 500, padding: 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 4, width: 500, padding: 20 }}>
             <h3 style={{ marginTop: 0, marginBottom: 16 }}>New Solution File</h3>
             <form onSubmit={handleNewFile}>
               <div className="form-row">

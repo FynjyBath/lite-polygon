@@ -104,9 +104,9 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   return (
     <div>
       <h2>Polygon API Sync</h2>
-      <p style={{ color: '#666', fontSize: 12, marginTop: 0 }}>
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
         Sync this problem with Codeforces Polygon. Get your API key at{' '}
-        <a href="https://polygon.codeforces.com/settings" target="_blank" rel="noreferrer" style={{ color: '#2264b0' }}>polygon.codeforces.com/settings</a>.
+        <a href="https://polygon.codeforces.com/settings" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>polygon.codeforces.com/settings</a>.
       </p>
 
       {msg && <div className="alert alert-success">{msg}</div>}
@@ -115,7 +115,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       {/* ── API Key section ─────────────────────────────────────── */}
       <div className="section-header">API Credentials</div>
       {hasKey && (
-        <div style={{ marginBottom: 8, padding: '6px 10px', background: '#f0f8f0', border: '1px solid #c0d8c0', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ marginBottom: 8, padding: '6px 10px', background: 'var(--ok-bg)', border: '1px solid #c0d8c0', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Saved credentials loaded into fields below</span>
           <button className="btn btn-sm btn-danger" onClick={handleClearKey} style={{ fontSize: 11 }}>Clear</button>
         </div>
@@ -154,17 +154,17 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       {/* ── Current Polygon link ─────────────────────────────────── */}
       <div className="section-header" style={{ marginTop: 16 }}>Polygon Link</div>
       {pgId ? (
-        <div style={{ padding: '8px 12px', background: '#f4f4f4', border: '1px solid #ddd', marginBottom: 12, fontSize: 12 }}>
+        <div style={{ padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', marginBottom: 12, fontSize: 12 }}>
           Linked to Polygon problem <strong>#{pgId}</strong>
-          {' '}<a href={`https://polygon.codeforces.com/problems/${pgId}`} target="_blank" rel="noreferrer" style={{ color: '#2264b0' }}>Open on Polygon</a>
+          {' '}<a href={`https://polygon.codeforces.com/problems/${pgId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Open on Polygon</a>
         </div>
       ) : (
-        <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>Not linked to any Polygon problem.</div>
+        <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 8 }}>Not linked to any Polygon problem.</div>
       )}
 
       {/* Link manually */}
       <details style={{ marginBottom: 16 }}>
-        <summary style={{ cursor: 'pointer', fontSize: 12, color: '#2264b0' }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>
           {pgId ? 'Change Polygon link' : 'Link to existing Polygon problem'}
         </summary>
         <div style={{ paddingTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -185,7 +185,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       {pgId && (
         <div style={{ marginBottom: 16 }}>
           <div className="section-header">Push Local Changes to Polygon</div>
-          <p style={{ fontSize: 12, color: '#666', margin: '4px 0 8px' }}>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 8px' }}>
             Uploads problem info, statements, solutions, checker, validator, and tests to Polygon problem #{pgId}.
           </p>
           <button
@@ -219,7 +219,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       {/* ── Create new on Polygon ────────────────────────────────── */}
       <div style={{ marginBottom: 16 }}>
         <div className="section-header">Create New Problem on Polygon</div>
-        <p style={{ fontSize: 12, color: '#666', margin: '4px 0 8px' }}>
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 8px' }}>
           Creates a new problem on Polygon and links it to this local problem. Optionally pushes all data immediately.
         </p>
         <div className="form-row">

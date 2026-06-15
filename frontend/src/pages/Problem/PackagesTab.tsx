@@ -182,7 +182,7 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
               </td>
             </tr>
           ))}
-          {packages.length === 0 && <tr><td colSpan={7} style={{ color: '#888' }}>No packages built</td></tr>}
+          {packages.length === 0 && <tr><td colSpan={7} style={{ color: 'var(--muted)' }}>No packages built</td></tr>}
         </tbody>
       </table>
 
@@ -222,7 +222,7 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
       )}
 
       {showValidation && (
-        <div style={{ marginBottom: 12, padding: '8px 12px', border: '1px solid #ddd', borderRadius: 4 }}>
+        <div style={{ marginBottom: 12, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 4 }}>
           {validErrors.length > 0 && (
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: 'red' }}>Errors ({validErrors.length}):</strong>
@@ -284,7 +284,7 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
         </div>
       )}
 
-      <div style={{ marginTop: 16, padding: '8px 12px', background: '#f4f8ff', border: '1px solid #cce', fontSize: 11 }}>
+      <div style={{ marginTop: 16, padding: '8px 12px', background: 'var(--info-bg)', border: '1px solid var(--border)', fontSize: 11 }}>
         <strong>Current problem state:</strong> Rev {info.revision},
         {info.modified ? <span style={{ color: '#c60' }}> Modified</span> : <span style={{ color: 'green' }}> Clean</span>}
       </div>

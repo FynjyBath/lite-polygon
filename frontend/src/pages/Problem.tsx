@@ -74,13 +74,13 @@ export default function ProblemPage() {
           ✓ Changes committed successfully
         </div>
       )}
-      <div className="problem-header" style={{ padding: '8px 16px', borderBottom: '1px solid #ddd', background: '#f9f9f9' }}>
+      <div className="problem-header" style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
         <div className="breadcrumb">
           <Link to="/">Problems</Link> &rsaquo; {info.shortName}
           {info.modified ? <span style={{ color: '#c60', marginLeft: 8 }}>[modified]</span> : ''}
         </div>
         <div style={{ fontWeight: 'bold', fontSize: 14 }}>{names}</div>
-        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
           Rev {info.revision} &bull; TL: {info.timeLimit}ms &bull; ML: {Math.round(info.memoryLimit / 1024 / 1024)}MB
           &bull; {info.inputFile || 'stdin'}/{info.outputFile || 'stdout'}
           {info.interactive ? ' • Interactive' : ''}
@@ -138,7 +138,7 @@ export default function ProblemPage() {
               <tr><td>Tags:</td><td>{info.tags.join(', ') || '—'}</td></tr>
             </tbody>
           </table>
-          <div style={{ marginTop: 8, borderTop: '1px solid #ddd', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <button
               className="btn btn-sm"
               style={{ width: '100%' }}

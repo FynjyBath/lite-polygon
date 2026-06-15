@@ -67,7 +67,7 @@ export default function ValidatorTab({ problemId, info, onUpdate }: Props) {
       {error && <div className="alert alert-error">{error}</div>}
 
       {validator && (
-        <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f4f4f4', border: '1px solid #ddd' }}>
+        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <strong>Current validator:</strong> <span className="source-type">{validator.source_path}</span>
           {' '}(<span className="source-type">{validator.source_type}</span>)
         </div>
@@ -116,10 +116,10 @@ export default function ValidatorTab({ problemId, info, onUpdate }: Props) {
               <td className={t.run_verdict === t.expected_verdict ? 'verdict-OK' : 'verdict-WA'}>
                 {t.run_verdict || '—'}
               </td>
-              <td style={{ fontSize: 11, color: '#666' }}>{t.run_comment}</td>
+              <td style={{ fontSize: 11, color: 'var(--muted)' }}>{t.run_comment}</td>
             </tr>
           ))}
-          {tests.length === 0 && <tr><td colSpan={5} style={{ color: '#888' }}>No validator tests</td></tr>}
+          {tests.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--muted)' }}>No validator tests</td></tr>}
         </tbody>
       </table>
 

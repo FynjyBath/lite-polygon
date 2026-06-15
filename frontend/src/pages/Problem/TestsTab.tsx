@@ -432,7 +432,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
           zIndex: 900, maxWidth: 'calc(100vw - 32px)',
           boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
         }}>
-          <strong style={{ color: '#2264b0' }}>{selected.size} selected:</strong>
+          <strong style={{ color: 'var(--accent)' }}>{selected.size} selected:</strong>
           <button className="btn btn-sm" onClick={() => bulkSetSample(true)} disabled={bulkWorking}>→ Sample</button>
           <button className="btn btn-sm" onClick={() => bulkSetSample(false)} disabled={bulkWorking}>→ Not Sample</button>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -440,7 +440,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
             <input
               value={bulkGroup}
               onChange={e => setBulkGroup(e.target.value)}
-              style={{ width: 60, fontSize: 12, padding: '1px 4px', border: '1px solid #aaa' }}
+              style={{ width: 60, fontSize: 12, padding: '1px 4px', border: '1px solid var(--border)' }}
             />
             <button className="btn btn-sm" onClick={bulkSetGroup} disabled={bulkWorking}>Apply</button>
           </span>
@@ -450,7 +450,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               type="number"
               value={bulkPoints}
               onChange={e => setBulkPoints(e.target.value)}
-              style={{ width: 60, fontSize: 12, padding: '1px 4px', border: '1px solid #aaa' }}
+              style={{ width: 60, fontSize: 12, padding: '1px 4px', border: '1px solid var(--border)' }}
             />
             <button className="btn btn-sm" onClick={bulkSetPoints} disabled={bulkWorking}>Apply</button>
           </span>
@@ -462,7 +462,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               max={tests.length}
               value={moveToIdx}
               onChange={e => setMoveToIdx(e.target.value)}
-              style={{ width: 56, fontSize: 12, padding: '1px 4px', border: '1px solid #aaa' }}
+              style={{ width: 56, fontSize: 12, padding: '1px 4px', border: '1px solid var(--border)' }}
             />
             <button className="btn btn-sm" onClick={handleMoveTo} disabled={bulkWorking || !moveToIdx}>Go</button>
           </span>
@@ -522,27 +522,27 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                       onClick={(e) => handleCheckboxClick(e as unknown as React.MouseEvent<HTMLInputElement>, t.idx)}
                     />
                   </td>
-                  <td style={{ textAlign: 'center', color: '#666' }}>{t.idx}</td>
+                  <td style={{ textAlign: 'center', color: 'var(--muted)' }}>{t.idx}</td>
                   <td
                     draggable
                     onDragStart={() => setDragIdx(t.idx)}
                     onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
                     title="Drag to reorder"
-                    style={{ cursor: 'grab', textAlign: 'center', color: '#999', userSelect: 'none' }}
+                    style={{ cursor: 'grab', textAlign: 'center', color: 'var(--muted)', userSelect: 'none' }}
                   >⠿</td>
                   <td>
                     {t.inputAvailable
                       ? <div className="input-preview" style={{ maxHeight: 48, fontSize: 10, cursor: 'pointer' }} onClick={() => handleViewInput(t.idx)}>{t.inputPreview}</div>
-                      : <span style={{ color: '#bbb', fontSize: 11 }}>no input</span>}
+                      : <span style={{ color: 'var(--muted)', fontSize: 11 }}>no input</span>}
                   </td>
-                  <td style={{ color: '#666', fontSize: 11 }}>{t.inputAvailable ? fmtSize(t.inputSize) : '—'}</td>
+                  <td style={{ color: 'var(--muted)', fontSize: 11 }}>{t.inputAvailable ? fmtSize(t.inputSize) : '—'}</td>
                   <td>
                     <input
                       value={row.desc}
                       onChange={ev => setRow(t.idx, { desc: ev.target.value })}
                       onBlur={() => saveRow(t)}
                       onKeyDown={e => e.key === 'Enter' && saveRow(t)}
-                      style={{ width: '100%', border: '1px solid #ddd', padding: '1px 4px', fontSize: 11 }}
+                      style={{ width: '100%', border: '1px solid var(--border)', padding: '1px 4px', fontSize: 11 }}
                     />
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -567,7 +567,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                       onChange={ev => setRow(t.idx, { group: ev.target.value })}
                       onBlur={() => saveRow(t)}
                       onKeyDown={e => e.key === 'Enter' && saveRow(t)}
-                      style={{ width: 52, border: '1px solid #ddd', padding: '1px 4px', fontSize: 11 }}
+                      style={{ width: 52, border: '1px solid var(--border)', padding: '1px 4px', fontSize: 11 }}
                     />
                   </td>
                   <td>
@@ -577,18 +577,18 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                       onChange={ev => setRow(t.idx, { points: ev.target.value })}
                       onBlur={() => saveRow(t)}
                       onKeyDown={e => e.key === 'Enter' && saveRow(t)}
-                      style={{ width: 52, border: '1px solid #ddd', padding: '1px 4px', fontSize: 11 }}
+                      style={{ width: 52, border: '1px solid var(--border)', padding: '1px 4px', fontSize: 11 }}
                     />
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     {t.inputAvailable
                       ? <a href={problems.testInput(problemId, t.idx)} target="_blank" rel="noreferrer" className="btn btn-sm">↓</a>
-                      : <span style={{ color: '#ccc', fontSize: 10 }}>—</span>}
+                      : <span style={{ color: 'var(--muted)', fontSize: 10 }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     {t.answerAvailable
                       ? <a href={problems.testAnswer(problemId, t.idx)} target="_blank" rel="noreferrer" className="btn btn-sm">↓</a>
-                      : <span style={{ color: '#ccc', fontSize: 10 }}>—</span>}
+                      : <span style={{ color: 'var(--muted)', fontSize: 10 }}>—</span>}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn btn-danger btn-sm" onClick={() => handleDelete(t.idx)} title="Delete">Del</button>
@@ -603,7 +603,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               );
             })}
             {tests.length === 0 && (
-              <tr><td colSpan={12} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
+              <tr><td colSpan={12} style={{ color: 'var(--muted)', textAlign: 'center', padding: 12 }}>No tests yet</td></tr>
             )}
           </tbody>
         </table>
@@ -655,7 +655,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
 
       {/* ── Add Group form ─────────────────────────────────────────────── */}
       <details style={{ marginBottom: 16 }}>
-        <summary style={{ cursor: 'pointer', color: '#2264b0', fontSize: 12, marginBottom: 4 }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: 12, marginBottom: 4 }}>
           {groups.length === 0 ? '+ Add Group / Enable Groups' : '+ Add/Edit Group'}
         </summary>
         <div style={{ paddingTop: 8 }}>
@@ -664,12 +664,12 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               <label style={{ fontSize: 12 }}>
                 Name:&nbsp;
                 <input value={newGroup.name} onChange={e => setNewGroup({ ...newGroup, name: e.target.value })}
-                  required style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                  required style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
               </label>
               <label style={{ fontSize: 12 }}>
                 Points:&nbsp;
                 <input type="number" value={newGroup.points} onChange={e => setNewGroup({ ...newGroup, points: e.target.value })}
-                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
               </label>
               <label style={{ fontSize: 12 }}>
                 Points policy:&nbsp;
@@ -692,7 +692,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               <label style={{ fontSize: 12 }}>
                 Deps (comma):&nbsp;
                 <input value={newGroup.dependencies} onChange={e => setNewGroup({ ...newGroup, dependencies: e.target.value })}
-                  placeholder="0,1" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                  placeholder="0,1" style={{ width: 80, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
               </label>
               <button type="submit" className="btn btn-primary btn-sm">Save Group</button>
             </div>
@@ -702,7 +702,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
 
       {/* ── Add Test form ──────────────────────────────────────────────── */}
       <details open>
-        <summary style={{ cursor: 'pointer', fontSize: 12, color: '#2264b0', marginBottom: 4 }}>+ Add Test</summary>
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}>+ Add Test</summary>
         <div style={{ paddingTop: 8 }}>
           <form onSubmit={handleAddTest}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -717,7 +717,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               <label style={{ fontSize: 12 }}>
                 Desc:&nbsp;
                 <input value={newTest.description} onChange={e => setNewTest({ ...newTest, description: e.target.value })}
-                  style={{ width: 120, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                  style={{ width: 120, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
               </label>
               <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <input type="checkbox" checked={newTest.sample} onChange={e => setNewTest({ ...newTest, sample: e.target.checked })} />
@@ -726,12 +726,12 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               <label style={{ fontSize: 12 }}>
                 Group:&nbsp;
                 <input value={newTest.group} onChange={e => setNewTest({ ...newTest, group: e.target.value })}
-                  style={{ width: 50, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                  style={{ width: 50, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
               </label>
               <label style={{ fontSize: 12 }}>
                 Points:&nbsp;
                 <input type="number" value={newTest.points} onChange={e => setNewTest({ ...newTest, points: e.target.value })}
-                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                  style={{ width: 60, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
               </label>
             </div>
             {newTest.method === 'manual' ? (
@@ -740,7 +740,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                 <textarea
                   value={newTest.input}
                   onChange={e => setNewTest({ ...newTest, input: e.target.value })}
-                  style={{ width: '100%', minHeight: 80, fontFamily: 'monospace', fontSize: 11, border: '1px solid #aaa', padding: 4, resize: 'vertical' }}
+                  style={{ width: '100%', minHeight: 80, fontFamily: 'monospace', fontSize: 11, border: '1px solid var(--border)', padding: 4, resize: 'vertical' }}
                 />
               </div>
             ) : (
@@ -748,7 +748,7 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                 <label style={{ fontSize: 12 }}>
                   Generator command:&nbsp;
                   <input value={newTest.cmd} onChange={e => setNewTest({ ...newTest, cmd: e.target.value })}
-                    placeholder="gen rand 100 42" style={{ width: 300, fontSize: 12, padding: '2px 4px', border: '1px solid #aaa' }} />
+                    placeholder="gen rand 100 42" style={{ width: 300, fontSize: 12, padding: '2px 4px', border: '1px solid var(--border)' }} />
                 </label>
               </div>
             )}
@@ -776,14 +776,14 @@ function GroupRow({
   return (
     <tr>
       <td><strong>{group.name}</strong></td>
-      <td style={{ textAlign: 'center', color: '#666' }}>{testCount}</td>
+      <td style={{ textAlign: 'center', color: 'var(--muted)' }}>{testCount}</td>
       <td>
         <input
           value={editPts}
           onChange={e => setEditPts(e.target.value)}
           onBlur={() => onUpdateField(group, 'points', editPts)}
           onKeyDown={e => e.key === 'Enter' && onUpdateField(group, 'points', editPts)}
-          style={{ width: 52, fontSize: 11, padding: '1px 4px', border: '1px solid #ddd' }}
+          style={{ width: 52, fontSize: 11, padding: '1px 4px', border: '1px solid var(--border)' }}
         />
       </td>
       <td>
@@ -811,7 +811,7 @@ function GroupRow({
       <td>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
           {group.dependencies.map(dep => (
-            <span key={dep} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: '#e8e8f8', border: '1px solid #ccd', borderRadius: 3, padding: '1px 4px', fontSize: 11 }}>
+            <span key={dep} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 11 }}>
               {dep}
               <button
                 onClick={() => onRemoveDep(group, dep)}
@@ -826,7 +826,7 @@ function GroupRow({
               onChange={e => setAddingDep(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { onAddDep(group, addingDep); setAddingDep(''); } }}
               placeholder="Add…"
-              style={{ width: 44, fontSize: 11, padding: '1px 4px', border: '1px solid #ccc' }}
+              style={{ width: 44, fontSize: 11, padding: '1px 4px', border: '1px solid var(--border)' }}
             />
             <button
               className="btn btn-sm"

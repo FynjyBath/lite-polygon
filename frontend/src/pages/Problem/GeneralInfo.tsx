@@ -108,7 +108,7 @@ export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
           <label>Input file:</label>
           <input type="text" value={inputFile} onChange={e => setInputFile(e.target.value)}
             placeholder="stdin" style={{ width: 160 }} />
-          <span style={{ color: '#888', fontSize: 11 }}>Leave blank for stdin</span>
+          <span style={{ color: 'var(--muted)', fontSize: 11 }}>Leave blank for stdin</span>
         </div>
         <div className="form-row">
           <label>Output file:</label>
@@ -137,7 +137,7 @@ export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
             {info.names.map(n => (
               <tr key={n.language}><td>{n.language}</td><td>{n.value}</td></tr>
             ))}
-            {info.names.length === 0 && <tr><td colSpan={2} style={{ color: '#888' }}>No names set</td></tr>}
+            {info.names.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--muted)' }}>No names set</td></tr>}
           </tbody>
         </table>
       </div>
@@ -175,7 +175,7 @@ export default function GeneralInfo({ problemId, info, onUpdate }: Props) {
         >
           {deleting ? 'Deleting...' : 'Delete Problem'}
         </button>
-        <span style={{ color: '#888', fontSize: 11 }}>Permanently deletes the problem and all its data.</span>
+        <span style={{ color: 'var(--muted)', fontSize: 11 }}>Permanently deletes the problem and all its data.</span>
       </div>
     </div>
   );

@@ -45,7 +45,7 @@ export default function FilesTab({ problemId }: Props) {
             </tr>
           ))}
           {resources.length === 0 && (
-            <tr><td colSpan={3} style={{ color: '#888' }}>No resource files</td></tr>
+            <tr><td colSpan={3} style={{ color: 'var(--muted)' }}>No resource files</td></tr>
           )}
         </tbody>
       </table>
@@ -65,7 +65,7 @@ export default function FilesTab({ problemId }: Props) {
             </tr>
           ))}
           {executables.length === 0 && (
-            <tr><td colSpan={4} style={{ color: '#888' }}>No executables</td></tr>
+            <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>No executables</td></tr>
           )}
         </tbody>
       </table>

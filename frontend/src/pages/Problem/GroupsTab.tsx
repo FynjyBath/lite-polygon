@@ -68,7 +68,7 @@ export default function GroupsTab({ problemId, info }: Props) {
               <td>{g.dependencies.join(', ') || '—'}</td>
             </tr>
           ))}
-          {groups.length === 0 && <tr><td colSpan={5} style={{ color: '#888' }}>No groups</td></tr>}
+          {groups.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--muted)' }}>No groups</td></tr>}
         </tbody>
       </table>
 

@@ -189,18 +189,18 @@ export default function ProblemsPage() {
 
       {/* Polygon API Import Panel */}
       {showPolygon && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid #c0d0f0', background: '#f8faff', borderRadius: 4 }}>
-          <div style={{ fontWeight: 'bold', fontSize: 13, marginBottom: 8, color: '#2264b0' }}>
+        <div style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid var(--border)', background: 'var(--info-bg)', borderRadius: 4 }}>
+          <div style={{ fontWeight: 'bold', fontSize: 13, marginBottom: 8, color: 'var(--accent)' }}>
             Import from Codeforces Polygon API
           </div>
-          <p style={{ fontSize: 12, color: '#666', margin: '0 0 8px' }}>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 8px' }}>
             Get your API key at{' '}
             <a href="https://polygon.codeforces.com/settings" target="_blank" rel="noreferrer">polygon.codeforces.com/settings</a>.
             The problem must have a built "Full package (Linux)" on Polygon.
           </p>
 
           {hasSavedKey && (
-            <div style={{ fontSize: 12, marginBottom: 8, padding: '4px 8px', background: '#f0f8f0', border: '1px solid #c0d8c0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 12, marginBottom: 8, padding: '4px 8px', background: 'var(--ok-bg)', border: '1px solid #c0d8c0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>Saved key: <code>{savedKey}</code></span>
               <button className="btn btn-sm btn-danger" onClick={handleClearKey} style={{ fontSize: 11 }}>Clear</button>
             </div>
@@ -218,7 +218,7 @@ export default function ProblemsPage() {
                   value={pgId}
                   onChange={e => setPgId(e.target.value)}
                   placeholder="123456"
-                  style={{ width: 100, fontSize: 12, padding: '2px 6px', border: '1px solid #aaa' }}
+                  style={{ width: 100, fontSize: 12, padding: '2px 6px', border: '1px solid var(--border)' }}
                   required
                 />
               </label>
@@ -229,7 +229,7 @@ export default function ProblemsPage() {
                   value={pgKey}
                   onChange={e => setPgKey(e.target.value)}
                   placeholder="API key"
-                  style={{ width: 200, fontSize: 12, padding: '2px 6px', border: '1px solid #aaa' }}
+                  style={{ width: 200, fontSize: 12, padding: '2px 6px', border: '1px solid var(--border)' }}
                 />
               </label>
               <label style={{ fontSize: 12 }}>
@@ -239,7 +239,7 @@ export default function ProblemsPage() {
                   value={pgSecret}
                   onChange={e => setPgSecret(e.target.value)}
                   placeholder="API secret"
-                  style={{ width: 200, fontSize: 12, padding: '2px 6px', border: '1px solid #aaa' }}
+                  style={{ width: 200, fontSize: 12, padding: '2px 6px', border: '1px solid var(--border)' }}
                 />
               </label>
             </div>
@@ -260,7 +260,7 @@ export default function ProblemsPage() {
       {loading ? (
         <div>Loading...</div>
       ) : list.length === 0 ? (
-        <div style={{ color: '#888', padding: 20 }}>No problems yet. Create one or upload a Polygon package.</div>
+        <div style={{ color: 'var(--muted)', padding: 20 }}>No problems yet. Create one or upload a Polygon package.</div>
       ) : (
         <table className="poly-table">
           <thead>
@@ -282,7 +282,7 @@ export default function ProblemsPage() {
               <tr key={p.id}>
                 <td>{p.id}</td>
                 <td><Link to={`/problem/${p.id}`}>{p.shortName}</Link></td>
-                {p.ownerUsername !== undefined && <td style={{ color: '#555', fontSize: 12 }}>{p.ownerUsername}</td>}
+                {p.ownerUsername !== undefined && <td style={{ color: 'var(--muted)', fontSize: 12 }}>{p.ownerUsername}</td>}
                 <td>{p.revision}</td>
                 <td>{p.timeLimit}</td>
                 <td>{formatMemory(p.memoryLimit)}</td>
@@ -293,7 +293,7 @@ export default function ProblemsPage() {
                 <td style={{ color: p.modified ? '#c60' : 'green' }}>
                   {p.modified ? 'Modified' : 'Clean'}
                 </td>
-                <td style={{ color: '#888', fontSize: 11 }}>{p.updatedAt.slice(0, 16)}</td>
+                <td style={{ color: 'var(--muted)', fontSize: 11 }}>{p.updatedAt.slice(0, 16)}</td>
                 <td style={{ display: 'flex', gap: 4 }}>
                   <Link to={`/problem/${p.id}`} className="btn btn-sm">Open</Link>
                   <button className="btn btn-sm" onClick={() => handleClone(p)} disabled={cloningId === p.id}

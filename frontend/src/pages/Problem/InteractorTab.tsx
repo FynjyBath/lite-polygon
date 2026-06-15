@@ -49,7 +49,7 @@ export default function InteractorTab({ problemId, info, onUpdate }: Props) {
   return (
     <div>
       <h2>Interactor</h2>
-      <p style={{ color: '#666', fontSize: 12, marginTop: 0, marginBottom: 12 }}>
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0, marginBottom: 12 }}>
         Required for interactive problems. The interactor communicates with the participant's solution via stdin/stdout.
         Mark the problem as interactive in <strong>General Info</strong>.
       </p>
@@ -58,7 +58,7 @@ export default function InteractorTab({ problemId, info, onUpdate }: Props) {
       {error && <div className="alert alert-error">{error}</div>}
 
       {interactor && (
-        <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f4f4f4', border: '1px solid #ddd' }}>
+        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <strong>Current interactor:</strong> <span className="source-type">{interactor.source_path}</span>
           {' '}(<span className="source-type">{interactor.source_type}</span>)
         </div>

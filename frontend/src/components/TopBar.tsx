@@ -88,7 +88,7 @@ export default function TopBar() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={e => { if (e.target === e.currentTarget) setShowChangePwd(false); }}
         >
-          <div style={{ background: '#fff', borderRadius: 6, padding: '24px 28px', minWidth: 320, boxShadow: '0 4px 24px rgba(0,0,0,0.25)' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 6, padding: '24px 28px', minWidth: 320, boxShadow: '0 4px 24px rgba(0,0,0,0.25)' }}>
             <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 16 }}>Change Password</div>
             {pwdOk ? (
               <div className="alert alert-success">Password changed successfully!</div>

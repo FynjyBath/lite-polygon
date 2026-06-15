@@ -41,7 +41,7 @@ export default function ReviewTab({ problemId }: Props) {
               ))}
             </ul>
           </div>
-          <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
             Note: AI tips are not available in this local instance.
           </p>
         </div>

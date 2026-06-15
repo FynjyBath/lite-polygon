@@ -45,7 +45,7 @@ export default function StressesTab({ problemId }: Props) {
               <td><span className="source-type">{s.solution_path}</span></td>
             </tr>
           ))}
-          {stresses.length === 0 && <tr><td colSpan={4} style={{ color: '#888' }}>No stresses</td></tr>}
+          {stresses.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>No stresses</td></tr>}
         </tbody>
       </table>
 
@@ -70,7 +70,7 @@ export default function StressesTab({ problemId }: Props) {
         </div>
       </form>
 
-      <div style={{ marginTop: 12, padding: '8px 12px', background: '#fff8e1', border: '1px solid #ffe082', fontSize: 11 }}>
+      <div style={{ marginTop: 12, padding: '8px 12px', background: 'var(--warn-bg)', border: '1px solid #ffe082', fontSize: 11 }}>
         Note: Stress running UI (watching for first divergence) is available via API. Run via invocations tab with the tested solution.
       </div>
     </div>
