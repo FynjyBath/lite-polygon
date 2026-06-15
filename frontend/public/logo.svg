@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs><clipPath id="c"><circle cx="128" cy="128" r="118"/></clipPath></defs>
+  <circle cx="128" cy="128" r="124" fill="#070b07"/>
+  <circle cx="128" cy="128" r="118" fill="#0c160d"/>
+  <g clip-path="url(#c)" fill="#16361f">
+    <path d="M8 66 q42 -22 74 4 q-32 32 -74 26 z"/>
+    <path d="M252 86 q-42 -10 -68 20 q36 30 68 12 z"/>
+    <path d="M28 204 q42 6 60 38 q-54 18 -82 -8 z"/>
+    <path d="M206 212 q26 -30 66 -16 q-8 46 -58 50 z"/>
+    <circle cx="58" cy="150" r="13"/><circle cx="214" cy="158" r="9"/>
+  </g>
+  <g clip-path="url(#c)" fill="#27583a" opacity="0.85">
+    <path d="M12 118 q36 -8 52 20 q-32 24 -58 6 z"/>
+    <path d="M240 150 q-32 -6 -50 18 q28 26 54 8 z"/>
+  </g>
+  <g fill="#7cc66f">
+    <ellipse cx="150" cy="146" rx="56" ry="38"/>
+    <path d="M194 135 C 220 131 232 145 244 143 C 230 155 210 161 192 159 Z"/>
+    <rect x="124" y="172" width="18" height="32" rx="9"/>
+    <rect x="168" y="174" width="18" height="30" rx="9"/>
+    <path d="M150 116 C 126 108 106 90 102 68 C 99 52 110 39 128 39 C 142 39 150 49 147 61 C 158 63 168 57 176 61 C 170 75 156 77 145 71 C 140 88 142 104 150 114 Z"/>
+    <ellipse cx="120" cy="49" rx="21" ry="16"/>
+  </g>
+  <circle cx="114" cy="45" r="3.6" fill="#0c160d"/>
+    <text x="48.5" y="183.6" transform="rotate(-55 48.5 183.6)" text-anchor="middle" dominant-baseline="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="34" fill="#8fd98a" stroke="#0a120b" stroke-width="1">Н</text>
+    <text x="75.2" y="209.4" transform="rotate(-33 75.2 209.4)" text-anchor="middle" dominant-baseline="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="34" fill="#8fd98a" stroke="#0a120b" stroke-width="1">Е</text>
+    <text x="109.5" y="223.2" transform="rotate(-11 109.5 223.2)" text-anchor="middle" dominant-baseline="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="34" fill="#8fd98a" stroke="#0a120b" stroke-width="1">М</text>
+    <text x="146.5" y="223.2" transform="rotate(11 146.5 223.2)" text-anchor="middle" dominant-baseline="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="34" fill="#8fd98a" stroke="#0a120b" stroke-width="1">А</text>
+    <text x="180.8" y="209.4" transform="rotate(33 180.8 209.4)" text-anchor="middle" dominant-baseline="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="34" fill="#8fd98a" stroke="#0a120b" stroke-width="1">Л</text>
+    <text x="207.5" y="183.6" transform="rotate(55 207.5 183.6)" text-anchor="middle" dominant-baseline="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="34" fill="#8fd98a" stroke="#0a120b" stroke-width="1">О</text>
+</svg>
