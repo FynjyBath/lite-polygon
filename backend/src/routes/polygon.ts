@@ -6,7 +6,7 @@ import { getAuthUser } from './auth';
 import { db, getProblemDir } from '../db/schema';
 import {
   getProblem, listSolutions, getAsset, listStatements,
-  getTestset, listTests, updateProblem, setTags,
+  getTestset, listTests, updateProblem, setTags, canAccessProblem,
 } from '../services/problems';
 import { importPackage } from '../services/import';
 
@@ -24,6 +24,13 @@ async function auth(req: FastifyRequest, reply: FastifyReply) {
 }
 
 function ok(result: unknown) { return { status: 'OK', result }; }
+
+// A user may run Polygon operations on a local problem if they own it, have it
+// shared, or are admin. Polygon itself then enforces whether their account can
+// touch the linked Polygon problem (the request is signed with their own keys).
+function canUseProblem(localId: number, user: { id: number; username: string }): boolean {
+  return user.username === 'admin' || canAccessProblem(localId, user.id);
+}
 
 // Compute Polygon-style apiSig: RAND + SHA512(RAND/method?sorted_params#secret)
 function computeApiSig(method: string, params: Record<string, string>, secret: string): string {
@@ -567,8 +574,8 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
 
     const localId = parseInt(String(problemId ?? ''));
     if (!localId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    const problem = getProblem(localId, user.id);
-    if (!problem) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found' });
+    const problem = getProblem(localId);
+    if (!problem || !canUseProblem(localId, user)) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
 
     const pgId = (problem as unknown as Record<string, unknown>).polygon_problem_id as number | null;
     if (!pgId) return reply.code(400).send({ status: 'FAILED', comment: 'This problem is not linked to a Polygon problem. Use "Create on Polygon" first.' });
@@ -605,8 +612,8 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ status: 'FAILED', comment: 'Invalid problem name (alphanumeric, _ and - only)' });
     }
 
-    const problem = getProblem(localId, user.id);
-    if (!problem) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found' });
+    const problem = getProblem(localId);
+    if (!problem || !canUseProblem(localId, user)) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
 
     let key: string, secret: string;
     try { ({ apiKey: key, apiSecret: secret } = resolveKeys(user.id, apiKey, apiSecret)); }
@@ -649,8 +656,8 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
     const localId = parseInt(String(problemId ?? ''));
     const pgId = parseInt(String(polygonProblemId ?? ''));
     if (!localId || !pgId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and polygonProblemId required' });
-    const problem = getProblem(localId, user.id);
-    if (!problem) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found' });
+    const problem = getProblem(localId);
+    if (!problem || !canUseProblem(localId, user)) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
     db.prepare('UPDATE problems SET polygon_problem_id = ? WHERE id = ?').run(pgId, localId);
     return ok({ polygonProblemId: pgId });
   });
