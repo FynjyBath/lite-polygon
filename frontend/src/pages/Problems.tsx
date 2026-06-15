@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { problems, polygon, ProblemSummary } from '../api/client';
 
 export default function ProblemsPage() {
+  const navigate = useNavigate();
   const [list, setList] = useState<ProblemSummary[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [cloningId, setCloningId] = useState<number | null>(null);
   const [importMsg, setImportMsg] = useState('');
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -61,6 +63,20 @@ export default function ProblemsPage() {
       reload();
     } catch (err: unknown) {
       setError((err as Error).message);
+    }
+  }
+
+  async function handleClone(p: ProblemSummary) {
+    setCloningId(p.id);
+    setError('');
+    try {
+      const res = await problems.clone(p.id);
+      reload();
+      navigate(`/problem/${res.id}/general`);
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally {
+      setCloningId(null);
     }
   }
 
@@ -275,6 +291,10 @@ export default function ProblemsPage() {
                 <td style={{ color: '#888', fontSize: 11 }}>{p.updatedAt.slice(0, 16)}</td>
                 <td style={{ display: 'flex', gap: 4 }}>
                   <Link to={`/problem/${p.id}`} className="btn btn-sm">Open</Link>
+                  <button className="btn btn-sm" onClick={() => handleClone(p)} disabled={cloningId === p.id}
+                    title="Duplicate this problem">
+                    {cloningId === p.id ? 'Cloning…' : 'Clone'}
+                  </button>
                   <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p)}>Delete</button>
                 </td>
               </tr>

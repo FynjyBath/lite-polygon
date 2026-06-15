@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getAuthUser } from './auth';
 import {
-  listProblems, listAllProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem,
+  listProblems, listAllProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem, cloneProblem,
   listSolutions, getSolution, getSolutionByPath, upsertSolution, deleteSolution,
   getAsset, upsertAsset, listFiles, upsertFile,
   getTestset, getOrCreateTestset, listTests, getTest, upsertTest, deleteTest as deleteTestDb,
@@ -111,6 +111,35 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     deleteProblem(id);
     if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
     return ok(null);
+  });
+
+  // problem.clone — duplicate a problem (DB rows + files) into a new problem
+  app.post('/api/problem.clone', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId } = req.body as { problemId?: string | number };
+    const id = parseInt(String(problemId ?? ''));
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    const source = getProblemForUser(id, user, reply);
+    if (!source) return;
+
+    // Pick a unique short name: "<name>-copy", then "-copy-2", "-copy-3", …
+    const base = `${source.short_name}-copy`;
+    let newName = base;
+    for (let n = 2; getProblemByName(newName, user.id); n++) newName = `${base}-${n}`;
+
+    let newId: number;
+    try { newId = cloneProblem(id, user.id, newName); }
+    catch (e: unknown) { return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message }); }
+
+    // Copy files on disk (skip workdir — it holds stale compiled binaries).
+    const srcDir = getProblemDir(id);
+    const dstDir = getProblemDir(newId);
+    if (fs.existsSync(srcDir)) {
+      fs.cpSync(srcDir, dstDir, { recursive: true, filter: (s) => path.basename(s) !== 'workdir' });
+    }
+    fs.mkdirSync(path.join(dstDir, 'workdir'), { recursive: true });
+
+    return ok({ id: newId, shortName: newName });
   });
 
   // problem.info

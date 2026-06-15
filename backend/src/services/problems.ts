@@ -144,6 +144,67 @@ export function deleteProblem(id: number): void {
   db.prepare('DELETE FROM problems WHERE id = ?').run(id);
 }
 
+// Insert a copy of `row` into `table`, dropping its primary key and the given
+// excluded columns, and applying value overrides. Returns the new row id.
+function insertCopy(table: string, row: Record<string, unknown>, exclude: string[], overrides: Record<string, unknown>): number | bigint {
+  const cols = Object.keys(row).filter(c => c !== 'id' && !exclude.includes(c));
+  for (const k of Object.keys(overrides)) if (!cols.includes(k)) cols.push(k);
+  const vals = cols.map(c => (c in overrides ? overrides[c] : row[c]));
+  const r = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...vals);
+  return r.lastInsertRowid;
+}
+
+/**
+ * Deep-clone a problem's DB rows into a new problem owned by `ownerId` with the
+ * given short name. Copies names, statements, testsets/tests/groups/deps,
+ * files, executables, assets, solutions, checker/validator tests, properties,
+ * tags and stresses. Build/run artifacts (packages, invocations) are not
+ * copied, and the clone is unlinked from Polygon. Returns the new problem id.
+ * File copying on disk is handled by the caller.
+ */
+export function cloneProblem(sourceId: number, ownerId: number, newShortName: string): number {
+  return db.transaction(() => {
+    const src = db.prepare('SELECT * FROM problems WHERE id = ?').get(sourceId) as Record<string, unknown> | undefined;
+    if (!src) throw new Error('Source problem not found');
+
+    const newId = Number(insertCopy('problems', src, ['created_at', 'updated_at'], {
+      owner_id: ownerId, short_name: newShortName, revision: 1, modified: 1, polygon_problem_id: null,
+    }));
+
+    // Tables keyed directly by problem_id with no internal FKs to remap.
+    const directTables = [
+      'problem_names', 'statements', 'problem_files', 'executables', 'assets',
+      'interactor_runs', 'solutions', 'checker_tests', 'validator_tests',
+      'problem_properties', 'problem_tags', 'stresses',
+    ];
+    for (const table of directTables) {
+      const rows = db.prepare(`SELECT * FROM ${table} WHERE problem_id = ?`).all(sourceId) as Record<string, unknown>[];
+      for (const row of rows) insertCopy(table, row, [], { problem_id: newId });
+    }
+
+    // Testsets → tests, groups → group_dependencies (remap testset_id/group_id).
+    const testsets = db.prepare('SELECT * FROM testsets WHERE problem_id = ?').all(sourceId) as Record<string, unknown>[];
+    for (const ts of testsets) {
+      const newTsId = insertCopy('testsets', ts, [], { problem_id: newId });
+      const tests = db.prepare('SELECT * FROM tests WHERE testset_id = ?').all(ts.id) as Record<string, unknown>[];
+      for (const t of tests) insertCopy('tests', t, [], { testset_id: newTsId });
+      const groups = db.prepare('SELECT * FROM test_groups WHERE testset_id = ?').all(ts.id) as Record<string, unknown>[];
+      for (const g of groups) {
+        const newGid = insertCopy('test_groups', g, [], { testset_id: newTsId });
+        const deps = db.prepare('SELECT * FROM group_dependencies WHERE group_id = ?').all(g.id) as Record<string, unknown>[];
+        for (const d of deps) insertCopy('group_dependencies', d, [], { group_id: newGid });
+      }
+    }
+
+    // Compiled binaries are absolute paths into the source problem's workdir;
+    // drop them so the clone recompiles into its own directory.
+    db.prepare("UPDATE solutions SET compiled_binary = '' WHERE problem_id = ?").run(newId);
+    db.prepare("UPDATE assets SET compiled_binary = '' WHERE problem_id = ?").run(newId);
+
+    return newId;
+  })();
+}
+
 export function getTestset(problemId: number, name = 'tests'): Testset | undefined {
   return db.prepare('SELECT * FROM testsets WHERE problem_id = ? AND name = ?').get(problemId, name) as Testset | undefined;
 }
