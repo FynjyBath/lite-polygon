@@ -85,8 +85,9 @@ export default function InteractorTab({ problemId, info, onUpdate }: Props) {
         <div className="form-row">
           <label>Source type:</label>
           <select value={sourceType} onChange={e => setSourceType(e.target.value)}>
+            <option value="cpp.g++14">cpp.g++14</option>
             <option value="cpp.g++17">cpp.g++17</option>
-            <option value="cpp.g++20">cpp.g++20</option>
+            <option value="cpp.gcc13-64-winlibs-g++20">cpp.gcc13-64-winlibs-g++20</option>
             <option value="cpp.gcc14-64-msys2-g++23">cpp.gcc14-64-msys2-g++23</option>
           </select>
         </div>

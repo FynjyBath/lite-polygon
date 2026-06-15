@@ -118,6 +118,25 @@ function resolveKeys(
   return { apiKey: k, apiSecret: s };
 }
 
+// Map our source types to the file types Polygon actually accepts. Polygon has
+// no plain `cpp.g++20` / `cpp.g++23` (those are toolchain-specific names), and
+// only java8 / java21, pypy as python.pypy3-64, etc. Unmapped values pass
+// through unchanged (they are already valid Polygon types).
+const POLYGON_FILE_TYPE_MAP: Record<string, string> = {
+  'cpp.g++20': 'cpp.gcc13-64-winlibs-g++20',
+  'cpp.g++23': 'cpp.gcc14-64-msys2-g++23',
+  'cpp.g++2x': 'cpp.gcc14-64-msys2-g++23',
+  'pypy.3': 'python.pypy3-64',
+  'pypy.2': 'python.pypy2',
+  'java11': 'java21',
+  'java17': 'java21',
+  'java': 'java8',
+};
+function toPolygonFileType(t: string | null | undefined): string {
+  const v = (t && t.trim()) || 'cpp.g++17';
+  return POLYGON_FILE_TYPE_MAP[v] ?? v;
+}
+
 const POLICY_MAP: Record<string, string> = {
   'each-test': 'EACH_TEST', 'complete-group': 'COMPLETE_GROUP',
 };
@@ -258,7 +277,7 @@ export async function pushToPolygon(
         await tryStep(`Checker file (${path.basename(checker.source_path)})`, async () => {
           await polygonPost('problem.saveFile', {
             problemId: pid, type: 'source', name: path.basename(checker.source_path),
-            file: content, sourceType: checker.source_type || 'cpp.g++17',
+            file: content, sourceType: toPolygonFileType(checker.source_type),
           }, key, secret);
           await polygonPost('problem.setChecker', {
             problemId: pid, checker: path.basename(checker.source_path),
@@ -277,7 +296,7 @@ export async function pushToPolygon(
       await tryStep(`Validator (${path.basename(validator.source_path)})`, async () => {
         await polygonPost('problem.saveFile', {
           problemId: pid, type: 'source', name: path.basename(validator.source_path),
-          file: content, sourceType: validator.source_type || 'cpp.g++17',
+          file: content, sourceType: toPolygonFileType(validator.source_type),
         }, key, secret);
         await polygonPost('problem.setValidator', {
           problemId: pid, validator: path.basename(validator.source_path),
@@ -296,7 +315,7 @@ export async function pushToPolygon(
         await tryStep(`Interactor (${path.basename(interactor.source_path)})`, async () => {
           await polygonPost('problem.saveFile', {
             problemId: pid, type: 'source', name: path.basename(interactor.source_path),
-            file: content, sourceType: interactor.source_type || 'cpp.g++17',
+            file: content, sourceType: toPolygonFileType(interactor.source_type),
           }, key, secret);
           await polygonPost('problem.setInteractor', {
             problemId: pid, interactor: path.basename(interactor.source_path),
@@ -326,7 +345,7 @@ export async function pushToPolygon(
       const tag = TAG_MAP[sol.tag] ?? TAG_MAP[sol.tag?.toLowerCase()] ?? 'OK';
       await polygonPost('problem.saveSolution', {
         problemId: pid, name: path.basename(sol.source_path),
-        file: content, sourceType: sol.source_type || 'cpp.g++17', tag,
+        file: content, sourceType: toPolygonFileType(sol.source_type), tag,
       }, key, secret);
     });
   }

@@ -4,15 +4,16 @@ import CodeEditor from '../../components/CodeEditor';
 
 interface Props { problemId: number; }
 
+// Polygon-valid file types, limited to what the local judge can compile/run.
 const LANGUAGE_OPTIONS = [
-  { value: 'cpp.g++17',  label: 'GNU G++17 7.3.0' },
-  { value: 'cpp.g++20',  label: 'GNU G++20 11.2.0' },
-  { value: 'cpp.g++23',  label: 'GNU G++23 14.2.0' },
-  { value: 'python.3',   label: 'Python 3.8.10' },
-  { value: 'pypy.3',     label: 'PyPy 3.9.10' },
-  { value: 'java8',      label: 'Java 8 (javac)' },
-  { value: 'java11',     label: 'Java 11 (javac)' },
-  { value: 'java17',     label: 'Java 17 (javac)' },
+  { value: 'cpp.g++14',                  label: 'GNU G++14' },
+  { value: 'cpp.g++17',                  label: 'GNU G++17' },
+  { value: 'cpp.gcc13-64-winlibs-g++20', label: 'GNU G++20 (winlibs)' },
+  { value: 'cpp.gcc14-64-msys2-g++23',   label: 'GNU G++23 (msys2)' },
+  { value: 'python.3',                   label: 'Python 3' },
+  { value: 'python.pypy3-64',            label: 'PyPy 3' },
+  { value: 'java8',                      label: 'Java 8' },
+  { value: 'java21',                     label: 'Java 21' },
 ];
 
 const TAG_OPTIONS = [
@@ -233,6 +234,8 @@ export default function SolutionsTab({ problemId }: Props) {
                     onChange={e => handleLangChange(sol, e.target.value)}
                     style={{ fontSize: 12, padding: '2px 4px' }}
                   >
+                    {!LANGUAGE_OPTIONS.some(l => l.value === sol.source_type) && sol.source_type &&
+                      <option value={sol.source_type}>{sol.source_type}</option>}
                     {LANGUAGE_OPTIONS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
                 </td>
