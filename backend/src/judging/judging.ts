@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { db, getProblemDir } from '../db/schema';
-import { getAsset, listSolutions, listTests, getTestset, getSolution, getDerivedTestGroups } from '../services/problems';
+import { getProblem, getAsset, listSolutions, listTests, getTestset, getSolution, getDerivedTestGroups } from '../services/problems';
 import { compileSource, runBinary, runChecker, isCompilable } from './compiler';
 import { STD_CHECKERS } from './stdCheckers';
 
@@ -242,8 +242,11 @@ export async function runInvocation(
       return;
     }
 
-    const timeLimitMs = testset.time_limit ?? 1000;
-    const memLimitBytes = testset.memory_limit ?? 268435456;
+    // The testset's own limits are only populated on import; the user edits the
+    // problem-level limits, so fall back to those (mirrors the package builder).
+    const problem = getProblem(problemId);
+    const timeLimitMs = testset.time_limit ?? problem?.time_limit ?? 1000;
+    const memLimitBytes = testset.memory_limit ?? problem?.memory_limit ?? 268435456;
     const tests = listTests(testset.id);
 
     // Phase 1: Pre-generate all missing test inputs sequentially to avoid

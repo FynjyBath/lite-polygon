@@ -258,6 +258,17 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (body.runCount) updates.run_count = parseInt(body.runCount);
     updates.modified = 1;
     updateProblem(id, updates);
+    // Keep per-testset limits (which take priority in the builder/runner) in
+    // sync with the problem-level limits the user just edited, otherwise an
+    // imported testset's stale limit would override the new value.
+    if (updates.time_limit !== undefined || updates.memory_limit !== undefined) {
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      if (updates.time_limit !== undefined) { sets.push('time_limit = ?'); vals.push(updates.time_limit); }
+      if (updates.memory_limit !== undefined) { sets.push('memory_limit = ?'); vals.push(updates.memory_limit); }
+      vals.push(id);
+      db.prepare(`UPDATE testsets SET ${sets.join(', ')} WHERE problem_id = ?`).run(...vals);
+    }
     if (body.name && body.language) {
       upsertProblemName(id, body.language, body.name);
     }
@@ -754,10 +765,15 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user, reply)) return;
+    const problem = getProblemForUser(id, user, reply);
+    if (!problem) return;
     const tsName = body.testset ?? 'tests';
     const testset = getTestset(id, tsName);
     if (!testset) return reply.code(404).send({ status: 'FAILED', comment: 'Testset not found' });
+    // The testset limits are only set on import; otherwise use the problem-level
+    // limits the user edits (mirrors the invocation runner and package builder).
+    const answerTimeLimit = testset.time_limit ?? problem.time_limit ?? 1000;
+    const answerMemLimit = testset.memory_limit ?? problem.memory_limit ?? 268435456;
 
     const existing = answerGenJobs.get(id);
     if (existing?.running) return ok({ started: false, alreadyRunning: true, ...publicJob(existing) });
@@ -787,7 +803,7 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
         if (!fs.existsSync(inputPath)) { job.errors.push(`Test ${t.idx}: input missing`); job.done++; continue; }
 
         try {
-          const r = await generateTestAnswer(id, inputPath, testset.time_limit ?? 1000, testset.memory_limit ?? 268435456, answerPath);
+          const r = await generateTestAnswer(id, inputPath, answerTimeLimit, answerMemLimit, answerPath);
           if (r.success) job.generated++;
           else job.errors.push(`Test ${t.idx}: ${r.error}`);
         } catch (e: unknown) {
