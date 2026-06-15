@@ -23,7 +23,7 @@ async function main() {
 
   const app = Fastify({
     logger: { level: process.env.NODE_ENV === 'production' ? 'warn' : 'info' },
-    bodyLimit: 50 * 1024 * 1024, // 50MB
+    bodyLimit: 1024 * 1024 * 1024, // 1GB — allow uploading large tests without limits
   });
 
   // Plugins
@@ -41,7 +41,7 @@ async function main() {
   });
   await app.register(fastifyMultipart, {
     limits: {
-      fileSize: 200 * 1024 * 1024, // 200MB
+      fileSize: 1024 * 1024 * 1024, // 1GB — allow large package/test archive uploads
       files: 1,
     },
   });
