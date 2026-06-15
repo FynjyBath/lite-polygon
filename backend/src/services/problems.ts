@@ -144,7 +144,7 @@ export function getProblemByName(shortName: string, ownerId: number): Problem | 
 
 export function createProblem(ownerId: number, shortName: string): Problem {
   const result = db.prepare(
-    'INSERT INTO problems (owner_id, short_name, modified) VALUES (?, ?, 1)'
+    'INSERT INTO problems (owner_id, short_name, modified, revision) VALUES (?, ?, 1, 0)'
   ).run(ownerId, shortName);
   const problem = getProblem(result.lastInsertRowid as number)!;
 
@@ -214,7 +214,7 @@ export function cloneProblem(sourceId: number, ownerId: number, newShortName: st
     if (!src) throw new Error('Source problem not found');
 
     const newId = Number(insertCopy('problems', src, ['created_at', 'updated_at'], {
-      owner_id: ownerId, short_name: newShortName, revision: 1, modified: 1, polygon_problem_id: null,
+      owner_id: ownerId, short_name: newShortName, revision: 0, modified: 1, polygon_problem_id: null,
     }));
 
     // Tables keyed directly by problem_id with no internal FKs to remap.

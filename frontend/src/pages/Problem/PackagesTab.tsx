@@ -186,6 +186,12 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
         </tbody>
       </table>
 
+      {info.modified && (
+        <div className="alert" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', marginBottom: 8 }}>
+          You have uncommitted changes. <strong>Commit them</strong> (sidebar) before building a package.
+        </div>
+      )}
+
       <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         Build Package
         <span style={{ display: 'flex', gap: 6 }}>
@@ -266,7 +272,8 @@ export default function PackagesTab({ problemId, info, onUpdate }: Props) {
           </label>
         </div>
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={building || verifying}>
+          <button type="submit" className="btn btn-primary" disabled={building || verifying || info.modified}
+            title={info.modified ? 'Commit your changes first' : ''}>
             {building ? 'Building...' : verifying ? 'Verifying…' : 'Build Package'}
           </button>
         </div>

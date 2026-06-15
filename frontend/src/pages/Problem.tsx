@@ -17,6 +17,7 @@ import PackagesTab from './Problem/PackagesTab';
 import TagsTab from './Problem/TagsTab';
 import ReviewTab from './Problem/ReviewTab';
 import PolygonTab from './Problem/PolygonTab';
+import RevisionsModal from './Problem/RevisionsModal';
 
 const TABS = [
   { key: 'general', label: 'General Info', path: 'general' },
@@ -41,7 +42,9 @@ export default function ProblemPage() {
   const [info, setInfo] = useState<ProblemInfo | null>(null);
   const [error, setError] = useState('');
   const [committing, setCommitting] = useState(false);
-  const [commitToast, setCommitToast] = useState(false);
+  const [commitToast, setCommitToast] = useState('');
+  const [commitComment, setCommitComment] = useState('');
+  const [showRevisions, setShowRevisions] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -71,8 +74,16 @@ export default function ProblemPage() {
           fontSize: 14, fontWeight: 500,
           animation: 'fadeInUp 0.2s ease',
         }}>
-          ✓ Changes committed successfully
+          ✓ {commitToast}
         </div>
+      )}
+      {showRevisions && (
+        <RevisionsModal
+          problemId={problemId}
+          currentRevision={info.revision}
+          onClose={() => setShowRevisions(false)}
+          onRestored={reloadInfo}
+        />
       )}
       <div className="problem-header" style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
         <div className="breadcrumb">
@@ -138,19 +149,42 @@ export default function ProblemPage() {
               <tr><td>Tags:</td><td>{info.tags.join(', ') || '—'}</td></tr>
             </tbody>
           </table>
-          <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+              Revision <strong style={{ color: 'var(--fg)' }}>{info.revision}</strong>
+              {' · '}
+              {info.modified
+                ? <span style={{ color: '#c60', fontWeight: 600 }}>uncommitted changes</span>
+                : <span style={{ color: 'green' }}>committed</span>}
+            </div>
+            <input
+              value={commitComment}
+              onChange={e => setCommitComment(e.target.value)}
+              placeholder="commit message (optional)"
+              disabled={committing || !info.modified}
+              style={{ width: '100%', fontSize: 11, padding: '3px 6px', border: '1px solid var(--border)', boxSizing: 'border-box' }}
+            />
             <button
-              className="btn btn-sm"
+              className="btn btn-sm btn-primary"
               style={{ width: '100%' }}
-              disabled={committing}
+              disabled={committing || !info.modified}
+              title={info.modified ? 'Commit the working copy as a new revision' : 'Nothing to commit'}
               onClick={() => {
                 setCommitting(true);
-                problems.commitChanges(problemId)
-                  .then(() => { reloadInfo(); setCommitToast(true); setTimeout(() => setCommitToast(false), 3000); })
+                problems.commitChanges(problemId, commitComment.trim() || undefined)
+                  .then(r => {
+                    reloadInfo(); setCommitComment('');
+                    setCommitToast(`Committed as revision ${r.revision}`);
+                    setTimeout(() => setCommitToast(''), 3000);
+                  })
+                  .catch(e => setError(e.message))
                   .finally(() => setCommitting(false));
               }}
             >
-              {committing ? <><span className="spinner" style={{ marginRight: 4 }} />Committing...</> : 'Commit Changes'}
+              {committing ? <><span className="spinner" style={{ marginRight: 4 }} />Committing…</> : info.modified ? 'Commit Changes' : 'No changes'}
+            </button>
+            <button className="btn btn-sm" style={{ width: '100%' }} onClick={() => setShowRevisions(true)}>
+              Revisions &amp; rollback
             </button>
           </div>
         </div>

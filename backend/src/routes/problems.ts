@@ -19,13 +19,14 @@ import {
   listExecutables, getOrCreateTestset as _getOrCreateTestset,
   getCautions,
 } from '../services/problems';
-import { getProblemDir, db } from '../db/schema';
+import { getProblemDir, getRevisionsDir, db } from '../db/schema';
 import { safeJoin, isPlainName } from '../utils/safePath';
 import { importPackage } from '../services/import';
 import { buildPackage } from '../packages/builder';
 import { compileAsset, compileSolution, runInvocation, generateTestAnswer, generateTestInput } from '../judging/judging';
 import { expandScriptToLines } from '../services/freemarker';
 import { verifyProblem } from '../services/verify';
+import { commitRevision, listRevisions, restoreRevision } from '../services/revisions';
 import { compileStatementPdf, statementPdfPath } from '../services/tex';
 import { generateProblemXml } from '../polygon-xml/generator';
 import { buildPackage as _buildPackage } from '../packages/builder';
@@ -159,6 +160,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const problemDir = getProblemDir(id);
     deleteProblem(id);
     if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
+    const revDir = getRevisionsDir(id);
+    if (fs.existsSync(revDir)) fs.rmSync(revDir, { recursive: true, force: true });
     return ok(null);
   });
 
@@ -1053,6 +1056,9 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
     const problem = getProblemForUser(id, user, reply);
     if (!problem) return;
+    if (problem.modified === 1) {
+      return reply.code(400).send({ status: 'FAILED', comment: 'Commit your changes before building a package.' });
+    }
     const type = (body.type ?? 'standard') as 'standard' | 'linux' | 'windows';
     const comment = body.comment ?? '';
 
@@ -1333,15 +1339,45 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return ok(null);
   });
 
-  // problem.commitChanges
+  // problem.commitChanges — snapshot the working copy as a new revision
   app.post('/api/problem.commitChanges', async (req, reply) => {
     const user = await auth(req, reply);
     const body = req.body as Record<string, string>;
     const id = parseInt(body.problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    const problem = getProblemForUser(id, user, reply);
+    if (!problem) return;
+    try {
+      const revision = commitRevision(id, body.comment ?? '');
+      return ok({ revision });
+    } catch (e: unknown) {
+      return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
+    }
+  });
+
+  // problem.revisions — list committed revisions (newest first)
+  app.get('/api/problem.revisions', async (req, reply) => {
+    const user = await auth(req, reply);
+    const id = parseInt((req.query as { problemId?: string }).problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
     if (!getProblemForUser(id, user, reply)) return;
-    updateProblem(id, { modified: 0 });
-    return ok(null);
+    return ok(listRevisions(id));
+  });
+
+  // problem.restoreRevision — restore the working copy to a committed revision
+  app.post('/api/problem.restoreRevision', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; revision?: string | number };
+    const id = parseInt(String(body.problemId ?? ''));
+    const rev = parseInt(String(body.revision ?? ''));
+    if (!id || !rev) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and revision required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    try {
+      restoreRevision(id, rev);
+      return ok({ revision: rev });
+    } catch (e: unknown) {
+      return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
+    }
   });
 
   // problem.discardWorkingCopy

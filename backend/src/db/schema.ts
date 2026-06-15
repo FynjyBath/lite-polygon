@@ -308,6 +308,15 @@ export function initSchema(dataDir?: string): void {
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE(contest_id, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS problem_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL,
+      comment TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(problem_id, revision)
+    );
   `);
 
   // Migrations for new columns (safe to run multiple times)
@@ -340,6 +349,10 @@ export function getProblemDir(problemId: number): string {
 
 export function getContestDir(contestId: number): string {
   return path.join(_dir, 'contests', String(contestId));
+}
+
+export function getRevisionsDir(problemId: number): string {
+  return path.join(_dir, 'revisions', String(problemId));
 }
 
 export function getPackagesDir(): string {

@@ -274,6 +274,8 @@ describe('Problems API', () => {
   });
 
   it('POST /api/problem.buildPackage', async () => {
+    // Packages can only be built from a committed (unmodified) working copy.
+    await app.inject({ method: 'POST', url: '/api/problem.commitChanges', headers: { cookie }, payload: { problemId } });
     const res = await app.inject({
       method: 'POST',
       url: '/api/problem.buildPackage',

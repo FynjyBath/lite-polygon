@@ -590,6 +590,9 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
     if (!localId) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
     const problem = getProblem(localId);
     if (!problem || !canUseProblem(localId, user)) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
+    if ((problem as unknown as Record<string, unknown>).modified === 1) {
+      return reply.code(400).send({ status: 'FAILED', comment: 'Commit your changes before pushing to Polygon.' });
+    }
 
     const pgId = (problem as unknown as Record<string, unknown>).polygon_problem_id as number | null;
     if (!pgId) return reply.code(400).send({ status: 'FAILED', comment: 'This problem is not linked to a Polygon problem. Use "Create on Polygon" first.' });
@@ -653,8 +656,12 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
 
     let pushResult: { done: string[]; errors: string[] } | null = null;
     if (pushAfter) {
-      try { pushResult = await pushToPolygon(localId, pgId, key, secret); }
-      catch (e: unknown) { pushResult = { done: [], errors: [`Push failed: ${(e as Error).message}`] }; }
+      if ((problem as unknown as Record<string, unknown>).modified === 1) {
+        pushResult = { done: [], errors: ['Not pushed: commit your changes first.'] };
+      } else {
+        try { pushResult = await pushToPolygon(localId, pgId, key, secret); }
+        catch (e: unknown) { pushResult = { done: [], errors: [`Push failed: ${(e as Error).message}`] }; }
+      }
     }
 
     return ok({ polygonProblemId: pgId, polygonName: pgName, push: pushResult });

@@ -187,10 +187,16 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
           <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 8px' }}>
             Uploads problem info, statements, solutions, checker, validator, and tests to Polygon problem #{pgId}.
           </p>
+          {info.modified && (
+            <div className="alert" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', marginBottom: 8 }}>
+              You have uncommitted changes. <strong>Commit them</strong> (sidebar) before pushing to Polygon.
+            </div>
+          )}
           <button
             className="btn btn-primary"
             onClick={handlePush}
-            disabled={pushing || (!hasKey && (!apiKey.trim() || !apiSecret.trim()))}
+            disabled={pushing || info.modified || (!hasKey && (!apiKey.trim() || !apiSecret.trim()))}
+            title={info.modified ? 'Commit your changes first' : ''}
           >
             {pushing ? <><span className="spinner" style={{ marginRight: 6 }} />Pushing…</> : `Push to Polygon #${pgId}`}
           </button>
