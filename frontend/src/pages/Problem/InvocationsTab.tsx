@@ -149,16 +149,20 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
     const groupNames = [...new Set(tests.map(t => t.group_name).filter(Boolean))];
     const hasGroups = groupNames.length > 0;
 
+    // Total points available across all tests (sum of per-test points).
+    const maxPoints = tests.reduce((s, t) => s + (t.points || 0), 0);
+
     // Per-solution stats
     const solStats = new Map<number, {
       totalPassed: number;
+      totalPoints: number;
       maxTimeMs: number;
       maxMemBytes: number;
       byGroup: Map<string, { passed: number; total: number; earnedPts: number; maxPts: number }>;
     }>();
     for (const solId of solIds) {
       const byGroup = new Map<string, { passed: number; total: number; earnedPts: number; maxPts: number }>();
-      let totalPassed = 0, maxTimeMs = 0, maxMemBytes = 0;
+      let totalPassed = 0, totalPoints = 0, maxTimeMs = 0, maxMemBytes = 0;
       for (const ti of testIdxs) {
         const run = map.get(`${solId}_${ti}`);
         const test = tests.find(t => t.idx === ti);
@@ -170,13 +174,14 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
         const gs = byGroup.get(gn)!;
         gs.total++;
         if (run) {
-          const isOk = run.verdict === 'OK';
-          if (isOk) { gs.passed++; totalPassed++; gs.earnedPts += run.points ?? 0; }
+          totalPoints += run.points ?? 0;          // points are awarded by the judge per group policy
+          gs.earnedPts += run.points ?? 0;
+          if (run.verdict === 'OK') { gs.passed++; totalPassed++; }
           if (run.time_ms > maxTimeMs) maxTimeMs = run.time_ms;
           if (run.memory_bytes > maxMemBytes) maxMemBytes = run.memory_bytes;
         }
       }
-      solStats.set(solId, { totalPassed, maxTimeMs, maxMemBytes, byGroup });
+      solStats.set(solId, { totalPassed, totalPoints, maxTimeMs, maxMemBytes, byGroup });
     }
 
     // Per-column slowest (among OK runs)
@@ -190,7 +195,7 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
       colSlowest.set(solId, max);
     }
 
-    return { solIds, testIdxs, map, groupNames, hasGroups, solStats, colSlowest };
+    return { solIds, testIdxs, map, groupNames, hasGroups, solStats, colSlowest, maxPoints };
   }
 
   const matrix = active ? buildMatrix() : null;
@@ -384,6 +389,22 @@ export default function InvocationsTab({ problemId, testsCount, solutionsCount, 
                     );
                   })}
                 </tr>
+
+                {/* Σ points (total score per solution) */}
+                {matrix.maxPoints > 0 && (
+                  <tr style={{ background: 'var(--info-bg)', fontWeight: 'bold' }}>
+                    <td style={{ padding: '2px 4px', color: 'var(--fg)', fontSize: 10 }}>Σ points</td>
+                    {matrix.solIds.map(solId => {
+                      const earned = matrix.solStats.get(solId)?.totalPoints ?? 0;
+                      const full = earned >= matrix.maxPoints - 1e-9;
+                      return (
+                        <td key={solId} style={{ textAlign: 'center', padding: '2px 4px', color: full ? '#060' : 'var(--fg)' }}>
+                          {Number.isInteger(earned) ? earned : earned.toFixed(1)} / {Number.isInteger(matrix.maxPoints) ? matrix.maxPoints : matrix.maxPoints.toFixed(1)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )}
 
                 {/* max row */}
                 <tr style={{ background: 'var(--info-bg)' }}>

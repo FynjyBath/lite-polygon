@@ -16,18 +16,19 @@ const LANGUAGE_OPTIONS = [
   { value: 'java21',                     label: 'Java 21' },
 ];
 
+// Solution tags named exactly as on Polygon.
 const TAG_OPTIONS = [
-  { value: 'main',                                    label: 'Main correct solution',                    color: '#007700' },
-  { value: 'accepted',                                label: 'Accepted',                                 color: '#007700' },
-  { value: 'rejected',                                label: 'Rejected',                                 color: 'var(--muted)' },
-  { value: 'wrong-answer',                            label: 'Wrong answer',                             color: '#cc0000' },
-  { value: 'presentation-error',                      label: 'Presentation error',                       color: '#cc0000' },
-  { value: 'time-limit-exceeded',                     label: 'Time limit exceeded',                      color: '#cc0000' },
-  { value: 'memory-limit-exceeded',                   label: 'Memory limit exceeded',                    color: '#cc0000' },
-  { value: 'time-limit-exceeded-or-accepted',         label: 'Time limit exceeded or accepted',          color: '#cc6600' },
-  { value: 'time-limit-exceeded-or-memory-limit-exceeded', label: 'TLE or MLE',                         color: '#cc6600' },
-  { value: 'runtime-error',                           label: 'Runtime error',                            color: '#cc0000' },
-  { value: 'do-not-run',                              label: 'Do not run',                               color: 'var(--muted)' },
+  { value: 'main',                                          label: 'Main correct solution',                          color: '#007700' },
+  { value: 'accepted',                                      label: 'Correct',                                        color: '#007700' },
+  { value: 'rejected',                                      label: 'Incorrect',                                      color: 'var(--muted)' },
+  { value: 'time-limit-exceeded',                           label: 'Time limit exceeded',                            color: '#cc6600' },
+  { value: 'time-limit-exceeded-or-accepted',               label: 'Time limit exceeded or correct',                 color: '#cc6600' },
+  { value: 'time-limit-exceeded-or-memory-limit-exceeded',  label: 'Time limit exceeded or memory limit exceeded',   color: '#cc6600' },
+  { value: 'wrong-answer',                                  label: 'Wrong answer',                                   color: '#cc0000' },
+  { value: 'presentation-error',                            label: 'Presentation error',                             color: '#cc0000' },
+  { value: 'memory-limit-exceeded',                         label: 'Memory limit exceeded',                          color: '#cc0000' },
+  { value: 'do-not-run',                                    label: 'Do not run',                                     color: 'var(--muted)' },
+  { value: 'failed',                                        label: 'Failed',                                         color: '#cc0000' },
 ];
 
 function tagInfo(tag: string) {
@@ -251,6 +252,8 @@ export default function SolutionsTab({ problemId }: Props) {
                     onChange={e => handleTagChange(sol, e.target.value)}
                     style={{ fontSize: 11, padding: '1px 2px', marginTop: 2 }}
                   >
+                    {!TAG_OPTIONS.some(t => t.value === sol.tag) && sol.tag &&
+                      <option value={sol.tag}>{sol.tag}</option>}
                     {TAG_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </td>

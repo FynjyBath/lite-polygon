@@ -147,8 +147,9 @@ const TAG_MAP: Record<string, string> = {
   'main': 'MA', 'accepted': 'OK', 'rejected': 'RJ',
   'wrong-answer': 'WA', 'time-limit-exceeded': 'TL',
   'memory-limit-exceeded': 'ML', 'presentation-error': 'PE',
-  'time-limit-exceeded-or-accepted': 'TO', 'runtime-error': 'RE',
-  'time-limit-exceeded-or-memory-limit-exceeded': 'TL',
+  'time-limit-exceeded-or-accepted': 'TO',
+  'time-limit-exceeded-or-memory-limit-exceeded': 'TM',
+  'runtime-error': 'RE', 'failed': 'RJ', 'do-not-run': 'RJ',
 };
 
 // Fetch problem data that the downloadable package omits but the API exposes:

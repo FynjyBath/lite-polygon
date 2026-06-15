@@ -156,7 +156,6 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       {pgId ? (
         <div style={{ padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', marginBottom: 12, fontSize: 12 }}>
           Linked to Polygon problem <strong>#{pgId}</strong>
-          {' '}<a href={`https://polygon.codeforces.com/problems/${pgId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Open on Polygon</a>
         </div>
       ) : (
         <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 8 }}>Not linked to any Polygon problem.</div>

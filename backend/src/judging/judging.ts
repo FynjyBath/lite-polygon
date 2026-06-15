@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { db, getProblemDir } from '../db/schema';
-import { getAsset, listSolutions, listTests, getTestset, getSolution } from '../services/problems';
+import { getAsset, listSolutions, listTests, getTestset, getSolution, getDerivedTestGroups } from '../services/problems';
 import { compileSource, runBinary, runChecker, isCompilable } from './compiler';
 import { STD_CHECKERS } from './stdCheckers';
 
@@ -365,9 +365,66 @@ export async function runInvocation(
       );
     });
 
+    // Phase 5: award points per (solution, test) based on the group policies.
+    //  - EACH_TEST group / ungrouped test: a passing (OK) test scores its points.
+    //  - COMPLETE_GROUP group: tests score their points only if the WHOLE group
+    //    passed; otherwise the whole group scores 0.
+    assignInvocationPoints(invocationId, testset.id, tests);
+
     db.prepare("UPDATE invocations SET state = 'DONE' WHERE id = ?").run(invocationId);
   } catch (e) {
     db.prepare("UPDATE invocations SET state = 'FAILED' WHERE id = ?").run(invocationId);
     throw e;
   }
+}
+
+/**
+ * Compute and store per-test points for every solution in an invocation,
+ * honouring each group's points policy:
+ *   - each-test (and ungrouped tests): a test scores its own points when its
+ *     verdict is OK.
+ *   - complete-group: the tests in the group score their points only when the
+ *     whole group passed; otherwise the entire group scores 0.
+ */
+function assignInvocationPoints(invocationId: number, testsetId: number, tests: ReturnType<typeof listTests>): void {
+  const policyByGroup = new Map<string, string>();
+  for (const g of getDerivedTestGroups(testsetId)) policyByGroup.set(g.name, g.points_policy);
+
+  const testsByGroup = new Map<string, typeof tests>();
+  for (const t of tests) {
+    const g = (t.group_name ?? '').trim();
+    if (!g) continue;
+    if (!testsByGroup.has(g)) testsByGroup.set(g, []);
+    testsByGroup.get(g)!.push(t);
+  }
+
+  const rows = db.prepare('SELECT solution_id, test_idx, verdict FROM invocation_runs WHERE invocation_id = ?')
+    .all(invocationId) as { solution_id: number; test_idx: number; verdict: string }[];
+  const verdictBySol = new Map<number, Map<number, string>>();
+  for (const r of rows) {
+    if (!verdictBySol.has(r.solution_id)) verdictBySol.set(r.solution_id, new Map());
+    verdictBySol.get(r.solution_id)!.set(r.test_idx, r.verdict);
+  }
+
+  const update = db.prepare('UPDATE invocation_runs SET points = ? WHERE invocation_id = ? AND solution_id = ? AND test_idx = ?');
+  db.transaction(() => {
+    for (const [solId, verdicts] of verdictBySol) {
+      // Pre-compute, per complete-group, whether the whole group passed.
+      const groupAllOk = new Map<string, boolean>();
+      for (const [gname, gtests] of testsByGroup) {
+        groupAllOk.set(gname, gtests.every(t => verdicts.get(t.idx) === 'OK'));
+      }
+      for (const t of tests) {
+        const ok = verdicts.get(t.idx) === 'OK';
+        const g = (t.group_name ?? '').trim();
+        let pts = 0;
+        if (g && (policyByGroup.get(g) ?? 'complete-group') === 'complete-group') {
+          pts = groupAllOk.get(g) ? (t.points || 0) : 0;
+        } else {
+          pts = ok ? (t.points || 0) : 0;
+        }
+        if (pts) update.run(pts, invocationId, solId, t.idx);
+      }
+    }
+  })();
 }
