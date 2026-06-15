@@ -98,15 +98,20 @@ function spawnAsync(
   }
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
-    // Enforce an address-space cap so a runaway program cannot OOM the host.
-    // Implemented via `sh -c 'ulimit -v "$1"; shift; exec "$@"'` — the program
-    // and its args are passed as separate argv entries and run through `exec
-    // "$@"`, so there is no shell word-splitting or injection.
+    // Enforce an address-space cap so a runaway program cannot OOM the host,
+    // and lift the stack limit to the address-space limit. Competitive solutions
+    // routinely rely on deep recursion / large local arrays and expect the stack
+    // to be as large as the memory limit (as on Codeforces/Polygon); the default
+    // 8 MB soft stack limit would otherwise SIGSEGV them (a false RE). The stack
+    // can still never exceed the `ulimit -v` cap. Implemented via
+    // `sh -c 'ulimit -s unlimited; ulimit -v "$1"; shift; exec "$@"'` — the
+    // program and its args are passed as separate argv entries and run through
+    // `exec "$@"`, so there is no shell word-splitting or injection.
     let realCmd = cmd;
     let realArgs = args;
     if (opts.memoryLimitKb && process.platform !== 'win32') {
       realCmd = '/bin/sh';
-      realArgs = ['-c', 'ulimit -v "$1"; shift; exec "$@"', 'memwrap', String(opts.memoryLimitKb), cmd, ...args];
+      realArgs = ['-c', 'ulimit -s unlimited 2>/dev/null || true; ulimit -v "$1"; shift; exec "$@"', 'memwrap', String(opts.memoryLimitKb), cmd, ...args];
     }
 
     let proc: ReturnType<typeof spawn>;
