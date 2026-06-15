@@ -124,6 +124,31 @@ export function listRevisions(problemId: number): RevisionInfo[] {
     .all(problemId) as RevisionInfo[];
 }
 
+/** Permanently delete a stored revision (its DB row and snapshot files). The
+ *  working copy and the problem's current revision number are untouched. */
+export function deleteRevision(problemId: number, revision: number): void {
+  const row = db.prepare('SELECT id FROM problem_revisions WHERE problem_id = ? AND revision = ?').get(problemId, revision);
+  if (!row) throw new Error(`Revision ${revision} not found`);
+  db.prepare('DELETE FROM problem_revisions WHERE problem_id = ? AND revision = ?').run(problemId, revision);
+  fs.rmSync(path.join(getRevisionsDir(problemId), String(revision)), { recursive: true, force: true });
+}
+
+/** Copy a problem's whole revision history (DB rows + snapshot files) onto
+ *  another problem. Used when cloning so the clone keeps the full history. */
+export function cloneRevisions(sourceId: number, newId: number): void {
+  const rows = db.prepare('SELECT revision, comment, created_at FROM problem_revisions WHERE problem_id = ?')
+    .all(sourceId) as { revision: number; comment: string; created_at: string }[];
+  const insert = db.prepare('INSERT INTO problem_revisions (problem_id, revision, comment, created_at) VALUES (?, ?, ?, ?)');
+  db.transaction(() => {
+    for (const r of rows) insert.run(newId, r.revision, r.comment, r.created_at);
+  })();
+
+  const srcDir = getRevisionsDir(sourceId);
+  if (fs.existsSync(srcDir)) {
+    fs.cpSync(srcDir, getRevisionsDir(newId), { recursive: true });
+  }
+}
+
 /**
  * Restore the working copy to a committed revision's content (DB + files). The
  * working copy is marked modified so the user explicitly commits it as a new

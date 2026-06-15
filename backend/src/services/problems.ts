@@ -213,8 +213,12 @@ export function cloneProblem(sourceId: number, ownerId: number, newShortName: st
     const src = db.prepare('SELECT * FROM problems WHERE id = ?').get(sourceId) as Record<string, unknown> | undefined;
     if (!src) throw new Error('Source problem not found');
 
+    // Mirror the source's revision number and modified flag so the cloned
+    // revision history (copied separately) stays consistent; the next commit
+    // continues numbering from where the source left off.
     const newId = Number(insertCopy('problems', src, ['created_at', 'updated_at'], {
-      owner_id: ownerId, short_name: newShortName, revision: 0, modified: 1, polygon_problem_id: null,
+      owner_id: ownerId, short_name: newShortName,
+      revision: src.revision ?? 0, modified: src.modified ?? 1, polygon_problem_id: null,
     }));
 
     // Tables keyed directly by problem_id with no internal FKs to remap.

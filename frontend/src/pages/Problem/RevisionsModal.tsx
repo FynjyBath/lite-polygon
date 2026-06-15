@@ -18,11 +18,13 @@ export default function RevisionsModal({ problemId, currentRevision, onClose, on
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
-  useEffect(() => {
+  function load() {
     problems.revisions(problemId)
       .then(setRevs).catch(e => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [problemId]);
+  }
+
+  useEffect(() => { load(); }, [problemId]);
 
   async function restore(rev: number) {
     if (!window.confirm(`Restore the working copy to revision ${rev}? This replaces the current uncommitted state; commit afterwards to keep it as a new revision.`)) return;
@@ -31,6 +33,17 @@ export default function RevisionsModal({ problemId, currentRevision, onClose, on
       await problems.restoreRevision(problemId, rev);
       setMsg(`Restored to revision ${rev}. Review and commit to save it as a new revision.`);
       onRestored();
+    } catch (e: unknown) { setError((e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  async function remove(rev: number) {
+    if (!window.confirm(`Delete revision ${rev} permanently? Its snapshot will be removed and you won't be able to roll back to it. This does not change your current working copy.`)) return;
+    setBusy(rev); setError(''); setMsg('');
+    try {
+      await problems.deleteRevision(problemId, rev);
+      setMsg(`Deleted revision ${rev}.`);
+      load();
     } catch (e: unknown) { setError((e as Error).message); }
     finally { setBusy(null); }
   }
@@ -53,7 +66,7 @@ export default function RevisionsModal({ problemId, currentRevision, onClose, on
           ) : (
             <table className="poly-table" style={{ fontSize: 12 }}>
               <thead>
-                <tr><th style={{ width: 50 }}>Rev</th><th>Comment</th><th style={{ width: 130 }}>Committed</th><th style={{ width: 80 }}>Action</th></tr>
+                <tr><th style={{ width: 50 }}>Rev</th><th>Comment</th><th style={{ width: 130 }}>Committed</th><th style={{ width: 140 }}>Action</th></tr>
               </thead>
               <tbody>
                 {revs.map(r => (
@@ -64,9 +77,14 @@ export default function RevisionsModal({ problemId, currentRevision, onClose, on
                     <td>{r.comment || <span style={{ color: 'var(--muted)' }}>—</span>}</td>
                     <td style={{ color: 'var(--muted)', fontSize: 11 }}>{r.created_at.slice(0, 16).replace('T', ' ')}</td>
                     <td>
-                      <button className="btn btn-sm" disabled={busy !== null} onClick={() => restore(r.revision)}>
-                        {busy === r.revision ? '…' : 'Restore'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-sm" disabled={busy !== null} onClick={() => restore(r.revision)}>
+                          {busy === r.revision ? '…' : 'Restore'}
+                        </button>
+                        <button className="btn btn-sm btn-danger" disabled={busy !== null} title="Delete this revision permanently" onClick={() => remove(r.revision)}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

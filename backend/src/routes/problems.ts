@@ -26,7 +26,7 @@ import { buildPackage } from '../packages/builder';
 import { compileAsset, compileSolution, runInvocation, generateTestAnswer, generateTestInput } from '../judging/judging';
 import { expandScriptToLines } from '../services/freemarker';
 import { verifyProblem } from '../services/verify';
-import { commitRevision, listRevisions, restoreRevision } from '../services/revisions';
+import { commitRevision, listRevisions, restoreRevision, deleteRevision, cloneRevisions } from '../services/revisions';
 import { compileStatementPdf, statementPdfPath } from '../services/tex';
 import { generateProblemXml } from '../polygon-xml/generator';
 import { buildPackage as _buildPackage } from '../packages/builder';
@@ -190,6 +190,9 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       fs.cpSync(srcDir, dstDir, { recursive: true, filter: (s) => path.basename(s) !== 'workdir' });
     }
     fs.mkdirSync(path.join(dstDir, 'workdir'), { recursive: true });
+
+    // Carry over the full revision history (DB rows + snapshot files).
+    cloneRevisions(id, newId);
 
     return ok({ id: newId, shortName: newName });
   });
@@ -1374,6 +1377,22 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     if (!getProblemForUser(id, user, reply)) return;
     try {
       restoreRevision(id, rev);
+      return ok({ revision: rev });
+    } catch (e: unknown) {
+      return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
+    }
+  });
+
+  // problem.deleteRevision — permanently delete a stored revision
+  app.post('/api/problem.deleteRevision', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; revision?: string | number };
+    const id = parseInt(String(body.problemId ?? ''));
+    const rev = parseInt(String(body.revision ?? ''));
+    if (!id || !rev) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and revision required' });
+    if (!getProblemForUser(id, user, reply)) return;
+    try {
+      deleteRevision(id, rev);
       return ok({ revision: rev });
     } catch (e: unknown) {
       return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });

@@ -166,6 +166,7 @@ export const problems = {
   commitChanges: (problemId: number, comment?: string) => post<{ revision: number }>('problem.commitChanges', { problemId, comment }),
   revisions: (problemId: number) => get<{ id: number; revision: number; comment: string; created_at: string }[]>('problem.revisions', { problemId }),
   restoreRevision: (problemId: number, revision: number) => post<{ revision: number }>('problem.restoreRevision', { problemId, revision }),
+  deleteRevision: (problemId: number, revision: number) => post<{ revision: number }>('problem.deleteRevision', { problemId, revision }),
   rename: (problemId: number, newName: string) => post<null>('problem.rename', { problemId, newName }),
   deleteStatement: (problemId: number, lang: string) => post<null>('problem.deleteStatement', { problemId, lang }),
   moveTestsTo: (problemId: number, testIndices: number[], targetIdx: number, testset?: string) =>
