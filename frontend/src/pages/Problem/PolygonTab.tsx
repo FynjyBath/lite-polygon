@@ -11,6 +11,8 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   // Shared key fields
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [apiUrl, setApiUrl] = useState('');
+  const [defaultUrl, setDefaultUrl] = useState('https://polygon.codeforces.com');
   const [remember, setRemember] = useState(false);
 
   // Push state
@@ -37,6 +39,8 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
       setSavedSecret(r.apiSecret);
       if (r.apiKey) setApiKey(r.apiKey);
       if (r.apiSecret) setApiSecret(r.apiSecret);
+      if (r.defaultUrl) setDefaultUrl(r.defaultUrl);
+      if (r.apiUrl) setApiUrl(r.apiUrl);
     }).catch(() => {});
   }, []);
 
@@ -46,11 +50,12 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
 
   function effectiveKey() { return apiKey.trim() || savedKey || ''; }
   function effectiveSecret() { return apiSecret.trim() || savedSecret || ''; }
+  function effectiveUrl() { return apiUrl.trim() || undefined; }
 
   async function handleSaveKey() {
     if (!apiKey.trim() || !apiSecret.trim()) { setError('Enter both key and secret to save'); return; }
     try {
-      await polygon.saveKey(apiKey.trim(), apiSecret.trim());
+      await polygon.saveKey(apiKey.trim(), apiSecret.trim(), apiUrl.trim() || undefined);
       setHasKey(true); setSavedKey(apiKey.trim()); setSavedSecret(apiSecret.trim());
       setMsg('API key saved');
     } catch (e: unknown) { setError((e as Error).message); }
@@ -68,7 +73,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   async function handlePush() {
     clearResult(); setPushing(true);
     try {
-      const result = await polygon.pushProblem(problemId, effectiveKey(), effectiveSecret(), remember);
+      const result = await polygon.pushProblem(problemId, effectiveKey(), effectiveSecret(), remember, effectiveUrl());
       if (remember && apiKey.trim() && apiSecret.trim()) { setHasKey(true); setSavedKey(apiKey.trim()); }
       setPushResult({ done: result.done, errors: result.errors });
       if (result.errors.length === 0) setMsg(`Pushed to Polygon problem #${result.polygonProblemId}: ${result.done.length} item(s) synced`);
@@ -80,7 +85,7 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
   async function handleCreate() {
     clearResult(); setCreating(true);
     try {
-      const result = await polygon.createProblem(problemId, createName, effectiveKey(), effectiveSecret(), remember, pushAfter);
+      const result = await polygon.createProblem(problemId, createName, effectiveKey(), effectiveSecret(), remember, pushAfter, effectiveUrl());
       if (remember && apiKey.trim() && apiSecret.trim()) { setHasKey(true); setSavedKey(apiKey.trim()); }
       setCreateResult({ polygonProblemId: result.polygonProblemId, polygonName: result.polygonName, push: result.push });
       setMsg(`Created Polygon problem #${result.polygonProblemId} (${result.polygonName})`);
@@ -105,8 +110,10 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
     <div>
       <h2>Polygon API Sync</h2>
       <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-        Sync this problem with Codeforces Polygon. Get your API key at{' '}
-        <a href="https://polygon.codeforces.com/settings" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>polygon.codeforces.com/settings</a>.
+        Sync this problem with Polygon. Get your API key at{' '}
+        <a href={`${(apiUrl.trim() || defaultUrl).replace(/\/+$/, '')}/settings`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+          {(apiUrl.trim() || defaultUrl).replace(/^https?:\/\//, '').replace(/\/+$/, '')}/settings
+        </a>.
       </p>
 
       {msg && <div className="alert alert-success">{msg}</div>}
@@ -120,6 +127,19 @@ export default function PolygonTab({ problemId, info, onUpdate }: Props) {
           <button className="btn btn-sm btn-danger" onClick={handleClearKey} style={{ fontSize: 11 }}>Clear</button>
         </div>
       )}
+      <div className="form-row">
+        <label>Polygon URL:</label>
+        <input
+          type="text"
+          value={apiUrl}
+          onChange={e => setApiUrl(e.target.value)}
+          placeholder={defaultUrl}
+          style={{ width: 320 }}
+        />
+        <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>
+          Leave empty for {defaultUrl}
+        </span>
+      </div>
       <div className="form-row">
         <label>API Key:</label>
         <input

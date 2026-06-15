@@ -324,6 +324,7 @@ export function initSchema(dataDir?: string): void {
     'ALTER TABLE problems ADD COLUMN polygon_problem_id INTEGER DEFAULT NULL',
     'ALTER TABLE users ADD COLUMN polygon_api_key TEXT DEFAULT NULL',
     'ALTER TABLE users ADD COLUMN polygon_api_secret TEXT DEFAULT NULL',
+    'ALTER TABLE users ADD COLUMN polygon_api_url TEXT DEFAULT NULL',
   ]) {
     try { _real.exec(sql); } catch { /* column already exists */ }
   }

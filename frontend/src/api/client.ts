@@ -192,15 +192,15 @@ export const problems = {
 };
 
 export const polygon = {
-  savedKey: () => get<{ hasKey: boolean; apiKey: string | null; apiSecret: string | null }>('polygon.savedKey'),
-  saveKey: (apiKey: string, apiSecret: string) => post<null>('polygon.saveKey', { apiKey, apiSecret }),
+  savedKey: () => get<{ hasKey: boolean; apiKey: string | null; apiSecret: string | null; apiUrl: string | null; defaultUrl: string }>('polygon.savedKey'),
+  saveKey: (apiKey: string, apiSecret: string, apiUrl?: string) => post<null>('polygon.saveKey', { apiKey, apiSecret, apiUrl }),
   clearKey: () => post<null>('polygon.clearKey'),
-  importProblem: (polygonProblemId: number, apiKey: string, apiSecret: string, remember: boolean) =>
-    post<{ shortName: string; filesImported: number; testsImported: number; warnings: string[]; polygonProblemId: number; packageRevision: number }>('polygon.importProblem', { polygonProblemId, apiKey, apiSecret, remember }),
-  pushProblem: (problemId: number, apiKey: string, apiSecret: string, remember: boolean) =>
-    post<{ polygonProblemId: number; done: string[]; errors: string[] }>('polygon.pushProblem', { problemId, apiKey, apiSecret, remember }),
-  createProblem: (localProblemId: number, name: string, apiKey: string, apiSecret: string, remember: boolean, pushAfter: boolean) =>
-    post<{ polygonProblemId: number; polygonName: string; push: { done: string[]; errors: string[] } | null }>('polygon.createProblem', { localProblemId, name, apiKey, apiSecret, remember, pushAfter }),
+  importProblem: (polygonProblemId: number, apiKey: string, apiSecret: string, remember: boolean, apiUrl?: string) =>
+    post<{ shortName: string; filesImported: number; testsImported: number; warnings: string[]; polygonProblemId: number; packageRevision: number }>('polygon.importProblem', { polygonProblemId, apiKey, apiSecret, remember, apiUrl }),
+  pushProblem: (problemId: number, apiKey: string, apiSecret: string, remember: boolean, apiUrl?: string) =>
+    post<{ polygonProblemId: number; done: string[]; errors: string[] }>('polygon.pushProblem', { problemId, apiKey, apiSecret, remember, apiUrl }),
+  createProblem: (localProblemId: number, name: string, apiKey: string, apiSecret: string, remember: boolean, pushAfter: boolean, apiUrl?: string) =>
+    post<{ polygonProblemId: number; polygonName: string; push: { done: string[]; errors: string[] } | null }>('polygon.createProblem', { localProblemId, name, apiKey, apiSecret, remember, pushAfter, apiUrl }),
   linkProblem: (problemId: number, polygonProblemId: number) =>
     post<{ polygonProblemId: number }>('polygon.linkProblem', { problemId, polygonProblemId }),
 };

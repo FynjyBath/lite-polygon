@@ -30,6 +30,8 @@ export default function ProblemsPage() {
   const [pgError, setPgError] = useState('');
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [hasSavedKey, setHasSavedKey] = useState(false);
+  const [pgUrl, setPgUrl] = useState('');
+  const [pgDefaultUrl, setPgDefaultUrl] = useState('https://polygon.codeforces.com');
 
   useEffect(() => {
     reload();
@@ -38,6 +40,8 @@ export default function ProblemsPage() {
       setSavedKey(r.apiKey);
       if (r.apiKey) setPgKey(r.apiKey);
       if (r.apiSecret) setPgSecret(r.apiSecret);
+      if (r.defaultUrl) setPgDefaultUrl(r.defaultUrl);
+      if (r.apiUrl) setPgUrl(r.apiUrl);
     }).catch(() => {});
   }, []);
 
@@ -112,7 +116,7 @@ export default function ProblemsPage() {
     if (!key || !secret) { setPgError('API key and secret are required'); return; }
     setPgImporting(true);
     try {
-      const result = await polygon.importProblem(id, key, secret, pgRemember);
+      const result = await polygon.importProblem(id, key, secret, pgRemember, pgUrl.trim() || undefined);
       if (pgRemember) { setHasSavedKey(true); setSavedKey(key); }
       setPgMsg(`Imported "${result.shortName}" (Polygon rev ${result.packageRevision}): ${result.filesImported} files, ${result.testsImported} tests${result.warnings.length ? '\nWarnings: ' + result.warnings.join('; ') : ''}`);
       reload();
@@ -195,7 +199,9 @@ export default function ProblemsPage() {
           </div>
           <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 8px' }}>
             Get your API key at{' '}
-            <a href="https://polygon.codeforces.com/settings" target="_blank" rel="noreferrer">polygon.codeforces.com/settings</a>.
+            <a href={`${(pgUrl.trim() || pgDefaultUrl).replace(/\/+$/, '')}/settings`} target="_blank" rel="noreferrer">
+              {(pgUrl.trim() || pgDefaultUrl).replace(/^https?:\/\//, '').replace(/\/+$/, '')}/settings
+            </a>.
             The problem must have a built "Full package (Linux)" on Polygon.
           </p>
 
@@ -211,6 +217,16 @@ export default function ProblemsPage() {
 
           <form onSubmit={handlePolygonImport}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+              <label style={{ fontSize: 12 }}>
+                Polygon URL:&nbsp;
+                <input
+                  type="text"
+                  value={pgUrl}
+                  onChange={e => setPgUrl(e.target.value)}
+                  placeholder={pgDefaultUrl}
+                  style={{ width: 220, fontSize: 12, padding: '2px 6px', border: '1px solid var(--border)' }}
+                />
+              </label>
               <label style={{ fontSize: 12 }}>
                 Polygon Problem ID:&nbsp;
                 <input

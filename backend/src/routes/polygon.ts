@@ -10,7 +10,18 @@ import {
 } from '../services/problems';
 import { importPackage } from '../services/import';
 
-const POLYGON_BASE = 'https://polygon.codeforces.com/api';
+export const DEFAULT_POLYGON_URL = 'https://polygon.codeforces.com';
+const POLYGON_BASE = DEFAULT_POLYGON_URL + '/api';
+
+// Turn a user-facing Polygon site URL (e.g. https://polygon.codeforces.com or a
+// self-hosted instance) into its API base. Blank/undefined falls back to the
+// standard Codeforces Polygon, preserving the previous behaviour.
+function toApiBase(url?: string | null): string {
+  const u = (url ?? '').trim();
+  if (!u) return POLYGON_BASE;
+  const withScheme = /^https?:\/\//i.test(u) ? u : `https://${u}`;
+  return withScheme.replace(/\/+$/, '').replace(/\/api$/i, '') + '/api';
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -48,12 +59,12 @@ function computeApiSig(method: string, params: Record<string, string>, secret: s
 }
 
 // Make a signed POST request to the Polygon API
-async function polygonPost(method: string, params: Record<string, string>, key: string, secret: string): Promise<unknown> {
+async function polygonPost(method: string, params: Record<string, string>, key: string, secret: string, base: string = POLYGON_BASE): Promise<unknown> {
   const time = String(Math.floor(Date.now() / 1000));
   const all: Record<string, string> = { ...params, apiKey: key, time };
   const sig = computeApiSig(method, all, secret);
   const body = new URLSearchParams({ ...all, apiSig: sig }).toString();
-  const res = await fetch(`${POLYGON_BASE}/${method}`, {
+  const res = await fetch(`${base}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
@@ -64,7 +75,7 @@ async function polygonPost(method: string, params: Record<string, string>, key: 
 }
 
 // Download a package as binary buffer; pkgType should match what Polygon built ('linux' or 'windows')
-async function downloadPolygonPackage(pgProblemId: number, packageId: number, pkgType: string, key: string, secret: string): Promise<Buffer> {
+async function downloadPolygonPackage(pgProblemId: number, packageId: number, pkgType: string, key: string, secret: string, base: string = POLYGON_BASE): Promise<Buffer> {
   // Try the given type first, then fall back to the other type
   const types = pkgType === 'linux' ? ['linux', 'windows'] : [pkgType, 'linux'];
   let lastError = '';
@@ -79,7 +90,7 @@ async function downloadPolygonPackage(pgProblemId: number, packageId: number, pk
     };
     const sig = computeApiSig('problem.package', params, secret);
     const qs = new URLSearchParams({ ...params, apiSig: sig }).toString();
-    const res = await fetch(`${POLYGON_BASE}/problem.package?${qs}`);
+    const res = await fetch(`${base}/problem.package?${qs}`);
     const ct = res.headers.get('content-type') ?? '';
     if (ct.includes('application/json') || ct.includes('text/plain')) {
       const text = await res.text();
@@ -116,6 +127,19 @@ function resolveKeys(
   }
   if (!k || !s) throw new Error('API key and secret are required (no saved key found)');
   return { apiKey: k, apiSecret: s };
+}
+
+// Get the user's saved Polygon site URL ('' if none / standard Codeforces)
+function getSavedUrl(userId: number): string {
+  const row = db.prepare('SELECT polygon_api_url FROM users WHERE id = ?').get(userId) as
+    { polygon_api_url: string | null } | undefined;
+  return row?.polygon_api_url?.trim() || '';
+}
+
+// Resolve the API base URL: use the provided site URL if given, else the saved
+// one, else the standard Codeforces Polygon.
+function resolveBase(userId: number, providedUrl?: string): string {
+  return toApiBase(providedUrl?.trim() || getSavedUrl(userId));
 }
 
 // Map our source types to the file types Polygon actually accepts. Polygon has
@@ -162,21 +186,22 @@ export async function enrichFromApi(
   key: string,
   secret: string,
   warnings: string[],
+  base: string = POLYGON_BASE,
 ): Promise<void> {
   const pid = String(pgProblemId);
 
   try {
-    const desc = await polygonPost('problem.viewGeneralDescription', { problemId: pid }, key, secret);
+    const desc = await polygonPost('problem.viewGeneralDescription', { problemId: pid }, key, secret, base);
     if (typeof desc === 'string' && desc.trim()) updateProblem(localProblemId, { general_description: desc });
   } catch (e: unknown) { warnings.push(`General description: ${(e as Error).message}`); }
 
   try {
-    const tut = await polygonPost('problem.viewGeneralTutorial', { problemId: pid }, key, secret);
+    const tut = await polygonPost('problem.viewGeneralTutorial', { problemId: pid }, key, secret, base);
     if (typeof tut === 'string' && tut.trim()) updateProblem(localProblemId, { general_tutorial: tut });
   } catch (e: unknown) { warnings.push(`General tutorial: ${(e as Error).message}`); }
 
   try {
-    const tags = await polygonPost('problem.viewTags', { problemId: pid }, key, secret);
+    const tags = await polygonPost('problem.viewTags', { problemId: pid }, key, secret, base);
     if (Array.isArray(tags) && tags.length > 0) setTags(localProblemId, tags.map(String));
   } catch (e: unknown) { warnings.push(`Tags: ${(e as Error).message}`); }
 }
@@ -187,6 +212,7 @@ export async function pushToPolygon(
   pgProblemId: number,
   key: string,
   secret: string,
+  base: string = POLYGON_BASE,
 ): Promise<{ done: string[]; errors: string[] }> {
   const done: string[] = [];
   const errors: string[] = [];
@@ -210,18 +236,18 @@ export async function pushToPolygon(
       timeLimit: String(problem.time_limit ?? 1000),
       memoryLimit: String(Math.round(Number(problem.memory_limit ?? 268435456) / 1024 / 1024)),
     };
-    await polygonPost('problem.updateInfo', infoParams, key, secret);
+    await polygonPost('problem.updateInfo', infoParams, key, secret, base);
   });
 
   // 1b. General description / tutorial — dedicated methods, only when present.
   if (problem.general_description) {
     await tryStep('General description', async () => {
-      await polygonPost('problem.saveGeneralDescription', { problemId: pid, description: String(problem.general_description) }, key, secret);
+      await polygonPost('problem.saveGeneralDescription', { problemId: pid, description: String(problem.general_description) }, key, secret, base);
     });
   }
   if (problem.general_tutorial) {
     await tryStep('General tutorial', async () => {
-      await polygonPost('problem.saveGeneralTutorial', { problemId: pid, tutorial: String(problem.general_tutorial) }, key, secret);
+      await polygonPost('problem.saveGeneralTutorial', { problemId: pid, tutorial: String(problem.general_tutorial) }, key, secret, base);
     });
   }
 
@@ -241,7 +267,7 @@ export async function pushToPolygon(
         interaction: stmt.interaction ?? '',
         notes: stmt.notes ?? '',
         tutorial: stmt.tutorial ?? '',
-      }, key, secret);
+      }, key, secret, base);
     });
 
     // Statement source files (problem.tex, tutorial.tex, example files, images, etc.)
@@ -258,7 +284,7 @@ export async function pushToPolygon(
           const content = fs.readFileSync(fpath, 'utf-8');
           await polygonPost('problem.saveStatementResource', {
             problemId: pid, lang: stmt.language, name: fname, file: content,
-          }, key, secret);
+          }, key, secret, base);
         });
       }
     }
@@ -269,7 +295,7 @@ export async function pushToPolygon(
   if (checker?.source_path) {
     if (checker.source_path.startsWith('std::')) {
       await tryStep(`Checker (${checker.source_path})`, async () => {
-        await polygonPost('problem.setChecker', { problemId: pid, checker: checker.source_path }, key, secret);
+        await polygonPost('problem.setChecker', { problemId: pid, checker: checker.source_path }, key, secret, base);
       });
     } else {
       const checkerFile = path.join(problemDir, checker.source_path);
@@ -279,10 +305,10 @@ export async function pushToPolygon(
           await polygonPost('problem.saveFile', {
             problemId: pid, type: 'source', name: path.basename(checker.source_path),
             file: content, sourceType: toPolygonFileType(checker.source_type),
-          }, key, secret);
+          }, key, secret, base);
           await polygonPost('problem.setChecker', {
             problemId: pid, checker: path.basename(checker.source_path),
-          }, key, secret);
+          }, key, secret, base);
         });
       }
     }
@@ -298,10 +324,10 @@ export async function pushToPolygon(
         await polygonPost('problem.saveFile', {
           problemId: pid, type: 'source', name: path.basename(validator.source_path),
           file: content, sourceType: toPolygonFileType(validator.source_type),
-        }, key, secret);
+        }, key, secret, base);
         await polygonPost('problem.setValidator', {
           problemId: pid, validator: path.basename(validator.source_path),
-        }, key, secret);
+        }, key, secret, base);
       });
     }
   }
@@ -317,10 +343,10 @@ export async function pushToPolygon(
           await polygonPost('problem.saveFile', {
             problemId: pid, type: 'source', name: path.basename(interactor.source_path),
             file: content, sourceType: toPolygonFileType(interactor.source_type),
-          }, key, secret);
+          }, key, secret, base);
           await polygonPost('problem.setInteractor', {
             problemId: pid, interactor: path.basename(interactor.source_path),
-          }, key, secret);
+          }, key, secret, base);
         });
       }
     }
@@ -332,7 +358,7 @@ export async function pushToPolygon(
     await tryStep('Tags', async () => {
       await polygonPost('problem.saveTags', {
         problemId: pid, tags: tags.map(t => t.value).join(','),
-      }, key, secret);
+      }, key, secret, base);
     });
   }
 
@@ -347,7 +373,7 @@ export async function pushToPolygon(
       await polygonPost('problem.saveSolution', {
         problemId: pid, name: path.basename(sol.source_path),
         file: content, sourceType: toPolygonFileType(sol.source_type), tag,
-      }, key, secret);
+      }, key, secret, base);
     });
   }
 
@@ -364,7 +390,7 @@ export async function pushToPolygon(
         await polygonPost('problem.saveFile', {
           problemId: pid, type: isSource ? 'source' : 'resource',
           name: fname, file: content,
-        }, key, secret);
+        }, key, secret, base);
       });
     }
   }
@@ -381,12 +407,12 @@ export async function pushToPolygon(
 
     if (groupsEnabled) {
       await tryStep('Enable test groups', async () => {
-        await polygonPost('problem.enableGroups', { problemId: pid, testset: 'tests', enable: 'true' }, key, secret);
+        await polygonPost('problem.enableGroups', { problemId: pid, testset: 'tests', enable: 'true' }, key, secret, base);
       });
     }
     if (pointsEnabled) {
       await tryStep('Enable points', async () => {
-        await polygonPost('problem.enablePoints', { problemId: pid, testset: 'tests', enable: 'true' }, key, secret);
+        await polygonPost('problem.enablePoints', { problemId: pid, testset: 'tests', enable: 'true' }, key, secret, base);
       });
     }
 
@@ -413,7 +439,7 @@ export async function pushToPolygon(
           testInput: `__placeholder_${test.idx}__`,
         };
         if (test.description) p.testDescription = String(test.description);
-        await polygonPost('problem.saveTest', p, key, secret);
+        await polygonPost('problem.saveTest', p, key, secret, base);
       });
     }
 
@@ -438,7 +464,7 @@ export async function pushToPolygon(
         if (pointsEnabled && (test.points as number) > 0) {
           testParams.testPoints = String(test.points);
         }
-        await polygonPost('problem.saveTest', testParams, key, secret);
+        await polygonPost('problem.saveTest', testParams, key, secret, base);
       });
     }
 
@@ -448,7 +474,7 @@ export async function pushToPolygon(
     if (generatedTests.length > 0) {
       await tryStep('Test generation script', async () => {
         const source = generatedTests.map(t => `${String(t.cmd).trim()} > ${t.idx}`).join('\n');
-        await polygonPost('problem.saveScript', { problemId: pid, testset: 'tests', source }, key, secret);
+        await polygonPost('problem.saveScript', { problemId: pid, testset: 'tests', source }, key, secret, base);
       });
       // Assign generated tests to their groups (script tests aren't saveTest'd).
       if (groupsEnabled) {
@@ -462,7 +488,7 @@ export async function pushToPolygon(
           await tryStep(`Group assignment "${gname}" (generated)`, async () => {
             await polygonPost('problem.setTestGroup', {
               problemId: pid, testset: 'tests', testGroup: gname, testIndices: idxs.join(','),
-            }, key, secret);
+            }, key, secret, base);
           });
         }
       }
@@ -478,7 +504,7 @@ export async function pushToPolygon(
         };
         if ((g.points as number) > 0) groupParams.points = String(g.points);
         if (g.dependencies.length > 0) groupParams.dependencies = g.dependencies.join(',');
-        await polygonPost('problem.saveTestGroup', groupParams, key, secret);
+        await polygonPost('problem.saveTestGroup', groupParams, key, secret, base);
       });
     }
   }
@@ -494,34 +520,41 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/polygon.savedKey', async (req, reply) => {
     const user = await auth(req, reply);
     const saved = getSavedKey(user.id);
-    return ok({ hasKey: saved !== null, apiKey: saved?.apiKey ?? null, apiSecret: saved?.apiSecret ?? null });
+    return ok({
+      hasKey: saved !== null,
+      apiKey: saved?.apiKey ?? null,
+      apiSecret: saved?.apiSecret ?? null,
+      apiUrl: getSavedUrl(user.id) || null,
+      defaultUrl: DEFAULT_POLYGON_URL,
+    });
   });
 
-  // polygon.saveKey - save API key+secret for the current user
+  // polygon.saveKey - save API key+secret (and optional site URL) for the user
   app.post('/api/polygon.saveKey', async (req, reply) => {
     const user = await auth(req, reply);
-    const { apiKey, apiSecret } = req.body as { apiKey?: string; apiSecret?: string };
+    const { apiKey, apiSecret, apiUrl } = req.body as { apiKey?: string; apiSecret?: string; apiUrl?: string };
     if (!apiKey?.trim() || !apiSecret?.trim()) {
       return reply.code(400).send({ status: 'FAILED', comment: 'apiKey and apiSecret required' });
     }
-    db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ? WHERE id = ?')
-      .run(apiKey.trim(), apiSecret.trim(), user.id);
+    db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ?, polygon_api_url = ? WHERE id = ?')
+      .run(apiKey.trim(), apiSecret.trim(), apiUrl?.trim() || null, user.id);
     return ok(null);
   });
 
-  // polygon.clearKey - remove saved API key
+  // polygon.clearKey - remove saved API key (and site URL)
   app.post('/api/polygon.clearKey', async (req, reply) => {
     const user = await auth(req, reply);
-    db.prepare('UPDATE users SET polygon_api_key = NULL, polygon_api_secret = NULL WHERE id = ?').run(user.id);
+    db.prepare('UPDATE users SET polygon_api_key = NULL, polygon_api_secret = NULL, polygon_api_url = NULL WHERE id = ?').run(user.id);
     return ok(null);
   });
 
   // polygon.importProblem - download a problem package from Polygon and import it
   app.post('/api/polygon.importProblem', async (req, reply) => {
     const user = await auth(req, reply);
-    const { apiKey, apiSecret, polygonProblemId, remember } = req.body as {
+    const { apiKey, apiSecret, apiUrl, polygonProblemId, remember } = req.body as {
       apiKey?: string;
       apiSecret?: string;
+      apiUrl?: string;
       polygonProblemId?: string | number;
       remember?: boolean;
     };
@@ -532,16 +565,17 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
     let key: string, secret: string;
     try { ({ apiKey: key, apiSecret: secret } = resolveKeys(user.id, apiKey, apiSecret)); }
     catch (e: unknown) { return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message }); }
+    const base = resolveBase(user.id, apiUrl);
 
     if (remember) {
-      db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ? WHERE id = ?')
-        .run(key, secret, user.id);
+      db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ?, polygon_api_url = ? WHERE id = ?')
+        .run(key, secret, apiUrl?.trim() || null, user.id);
     }
 
     // Get list of packages
     let packages: Array<{ id: number; state: string; type: string; revision: number }>;
     try {
-      packages = await polygonPost('problem.packages', { problemId: String(pgId) }, key, secret) as typeof packages;
+      packages = await polygonPost('problem.packages', { problemId: String(pgId) }, key, secret, base) as typeof packages;
     } catch (e: unknown) {
       return reply.code(400).send({ status: 'FAILED', comment: `Failed to fetch packages: ${(e as Error).message}` });
     }
@@ -558,7 +592,7 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
 
     const tmpPath = `/tmp/polygon_pkg_${Date.now()}_${pgId}.zip`;
     try {
-      const buf = await downloadPolygonPackage(pgId, pkg.id, pkg.type ?? 'linux', key, secret);
+      const buf = await downloadPolygonPackage(pgId, pkg.id, pkg.type ?? 'linux', key, secret, base);
       fs.writeFileSync(tmpPath, buf);
       const result = await importPackage(tmpPath, user.id, true);
       db.prepare('UPDATE problems SET polygon_problem_id = ? WHERE id = ?').run(pgId, result.problemId);
@@ -566,7 +600,7 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
       // Pull data that the downloadable package does NOT contain but the API
       // exposes: general description, general tutorial and tags. Best-effort —
       // failures are recorded as warnings and don't abort the import.
-      await enrichFromApi(result.problemId, pgId, key, secret, result.warnings);
+      await enrichFromApi(result.problemId, pgId, key, secret, result.warnings, base);
 
       return ok({ ...result, polygonProblemId: pgId, packageId: pkg.id, packageRevision: pkg.revision });
     } catch (e: unknown) {
@@ -579,10 +613,11 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
   // polygon.pushProblem - push local problem changes to Polygon
   app.post('/api/polygon.pushProblem', async (req, reply) => {
     const user = await auth(req, reply);
-    const { problemId, apiKey, apiSecret, remember } = req.body as {
+    const { problemId, apiKey, apiSecret, apiUrl, remember } = req.body as {
       problemId?: string | number;
       apiKey?: string;
       apiSecret?: string;
+      apiUrl?: string;
       remember?: boolean;
     };
 
@@ -600,24 +635,26 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
     let key: string, secret: string;
     try { ({ apiKey: key, apiSecret: secret } = resolveKeys(user.id, apiKey, apiSecret)); }
     catch (e: unknown) { return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message }); }
+    const base = resolveBase(user.id, apiUrl);
 
     if (remember) {
-      db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ? WHERE id = ?')
-        .run(key, secret, user.id);
+      db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ?, polygon_api_url = ? WHERE id = ?')
+        .run(key, secret, apiUrl?.trim() || null, user.id);
     }
 
-    const result = await pushToPolygon(localId, pgId, key, secret);
+    const result = await pushToPolygon(localId, pgId, key, secret, base);
     return ok({ polygonProblemId: pgId, ...result });
   });
 
   // polygon.createProblem - create a new problem on Polygon and link it to a local problem
   app.post('/api/polygon.createProblem', async (req, reply) => {
     const user = await auth(req, reply);
-    const { localProblemId, name, apiKey, apiSecret, remember, pushAfter } = req.body as {
+    const { localProblemId, name, apiKey, apiSecret, apiUrl, remember, pushAfter } = req.body as {
       localProblemId?: string | number;
       name?: string;
       apiKey?: string;
       apiSecret?: string;
+      apiUrl?: string;
       remember?: boolean;
       pushAfter?: boolean;
     };
@@ -635,16 +672,17 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
     let key: string, secret: string;
     try { ({ apiKey: key, apiSecret: secret } = resolveKeys(user.id, apiKey, apiSecret)); }
     catch (e: unknown) { return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message }); }
+    const base = resolveBase(user.id, apiUrl);
 
     if (remember) {
-      db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ? WHERE id = ?')
-        .run(key, secret, user.id);
+      db.prepare('UPDATE users SET polygon_api_key = ?, polygon_api_secret = ?, polygon_api_url = ? WHERE id = ?')
+        .run(key, secret, apiUrl?.trim() || null, user.id);
     }
 
     // Create on Polygon
     let pgId: number;
     try {
-      const created = await polygonPost('problem.create', { name: pgName }, key, secret) as { id?: number; problemId?: number };
+      const created = await polygonPost('problem.create', { name: pgName }, key, secret, base) as { id?: number; problemId?: number };
       pgId = created.id ?? created.problemId ?? 0;
       if (!pgId) throw new Error('Polygon did not return a problem ID');
     } catch (e: unknown) {
@@ -659,7 +697,7 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
       if ((problem as unknown as Record<string, unknown>).modified === 1) {
         pushResult = { done: [], errors: ['Not pushed: commit your changes first.'] };
       } else {
-        try { pushResult = await pushToPolygon(localId, pgId, key, secret); }
+        try { pushResult = await pushToPolygon(localId, pgId, key, secret, base); }
         catch (e: unknown) { pushResult = { done: [], errors: [`Push failed: ${(e as Error).message}`] }; }
       }
     }

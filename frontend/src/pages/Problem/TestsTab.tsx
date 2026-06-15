@@ -361,6 +361,14 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   const allSelected = tests.length > 0 && selected.size === tests.length;
   const someSelected = selected.size > 0 && !allSelected;
 
+  // Total of all tests' points, reflecting unsaved inline edits.
+  const totalPoints = tests.reduce((sum, t) => {
+    const r = editRows[t.idx];
+    const p = r ? (parseFloat(r.points) || 0) : (t.points || 0);
+    return sum + p;
+  }, 0);
+  const fmtPoints = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
   return (
     <div style={{ paddingBottom: selected.size > 0 ? 64 : 0 }}>
       {/* Header */}
@@ -477,7 +485,12 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               <th style={{ width: 300 }}>Desc</th>
               <th style={{ width: 36 }} title="Sample/Example">Ex</th>
               <th style={{ width: 60 }}>Group</th>
-              <th style={{ width: 60 }}>Points</th>
+              <th style={{ width: 60 }} title={`Sum of all tests' points: ${fmtPoints(totalPoints)}`}>
+                Points
+                <div style={{ fontSize: 10, fontWeight: 'normal', color: totalPoints === 100 ? 'green' : 'var(--muted)' }}>
+                  Σ {fmtPoints(totalPoints)}
+                </div>
+              </th>
               <th style={{ width: 44 }}>Input</th>
               <th style={{ width: 48 }}>Answer</th>
               <th>Actions</th>
