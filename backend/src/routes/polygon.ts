@@ -28,7 +28,12 @@ function ok(result: unknown) { return { status: 'OK', result }; }
 // Compute Polygon-style apiSig: RAND + SHA512(RAND/method?sorted_params#secret)
 function computeApiSig(method: string, params: Record<string, string>, secret: string): string {
   const rand = crypto.randomBytes(3).toString('hex'); // 6 lowercase hex chars
-  const sorted = Object.entries(params).sort(([a], [b]) => a.localeCompare(b));
+  // Polygon sorts parameters by key (then value) using natural code-point order
+  // (Java String.compareTo). Do NOT use localeCompare here — its case/locale
+  // aware collation orders keys like `testUseInStatements` vs `testset`
+  // differently from Polygon, producing an "Incorrect signature" error.
+  const sorted = Object.entries(params).sort(([ak, av], [bk, bv]) =>
+    ak < bk ? -1 : ak > bk ? 1 : av < bv ? -1 : av > bv ? 1 : 0);
   const qs = sorted.map(([k, v]) => `${k}=${v}`).join('&');
   const raw = `${rand}/${method}?${qs}#${secret}`;
   const hash = crypto.createHash('sha512').update(raw).digest('hex');
