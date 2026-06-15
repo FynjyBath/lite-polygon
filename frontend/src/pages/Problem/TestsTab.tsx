@@ -487,9 +487,9 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
               </th>
               <th style={{ width: 30 }}>#</th>
               <th style={{ width: 18 }} title="Drag to reorder"></th>
-              <th style={{ width: 160 }}>Content</th>
-              <th style={{ width: 60 }}>Size</th>
-              <th style={{ width: 120 }}>Desc</th>
+              <th style={{ width: 96 }}>Content</th>
+              <th style={{ width: 52 }}>Size</th>
+              <th style={{ width: 300 }}>Desc</th>
               <th style={{ width: 36 }} title="Sample/Example">Ex</th>
               <th style={{ width: 60 }}>Group</th>
               <th style={{ width: 60 }}>Points</th>
@@ -532,17 +532,18 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                   >⠿</td>
                   <td>
                     {t.inputAvailable
-                      ? <div className="input-preview" style={{ maxHeight: 48, fontSize: 10, cursor: 'pointer' }} onClick={() => handleViewInput(t.idx)}>{t.inputPreview}</div>
+                      ? <div className="input-preview" style={{ maxHeight: 40, maxWidth: 96, fontSize: 10, cursor: 'pointer' }} onClick={() => handleViewInput(t.idx)} title="Click to view full input">{t.inputPreview}</div>
                       : <span style={{ color: 'var(--muted)', fontSize: 11 }}>no input</span>}
                   </td>
                   <td style={{ color: 'var(--muted)', fontSize: 11 }}>{t.inputAvailable ? fmtSize(t.inputSize) : '—'}</td>
                   <td>
                     <input
                       value={row.desc}
+                      title={row.desc}
                       onChange={ev => setRow(t.idx, { desc: ev.target.value })}
                       onBlur={() => saveRow(t)}
                       onKeyDown={e => e.key === 'Enter' && saveRow(t)}
-                      style={{ width: '100%', border: '1px solid var(--border)', padding: '1px 4px', fontSize: 11 }}
+                      style={{ width: '100%', border: '1px solid var(--border)', padding: '2px 6px', fontSize: 12 }}
                     />
                   </td>
                   <td style={{ textAlign: 'center' }}>
