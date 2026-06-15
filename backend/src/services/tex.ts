@@ -50,18 +50,32 @@ function injectUnicodeFixes(mainTex: string): string {
   return mainTex.replace(/(\\usepackage\s*\[utf8\]\s*\{inputenc\})/, `$1\n${UNICODE_FIXES}`);
 }
 
+const PDFLATEX_TIMEOUT_MS = 30000;
+
 function spawnPdflatex(cwd: string, file: string): Promise<{ code: number | null }> {
   return new Promise((resolve) => {
-    const p = spawn('pdflatex', ['-interaction=nonstopmode', '-halt-on-error', file], {
+    // Security hardening for untrusted author LaTeX:
+    //  -no-shell-escape  : forbid \write18 shell execution
+    //  openin_any/openout_any = p (paranoid): \input/\openin/\openout may only
+    //    touch non-hidden files in/below the build dir — blocks reads of
+    //    /etc/passwd etc. while still allowing texmf package lookups.
+    const p = spawn('pdflatex', ['-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', file], {
       cwd,
       env: {
         PATH: process.env.PATH ?? '/usr/bin:/bin',
         HOME: os.tmpdir(),
         TEXMFVAR: path.join(os.tmpdir(), 'texmf-var'),
+        openin_any: 'p',
+        openout_any: 'p',
+        shell_escape: 'f',
       },
     });
-    p.on('error', () => resolve({ code: -1 }));
-    p.on('close', (code) => resolve({ code }));
+    let settled = false;
+    const done = (code: number | null) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ code }); };
+    // A malicious/looping document must not hang the compile forever.
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* already dead */ } done(-1); }, PDFLATEX_TIMEOUT_MS);
+    p.on('error', () => done(-1));
+    p.on('close', (code) => done(code));
     // Drain output so the process is not blocked on a full pipe buffer.
     p.stdout?.on('data', () => {});
     p.stderr?.on('data', () => {});

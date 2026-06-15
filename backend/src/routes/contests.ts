@@ -10,6 +10,7 @@ import { canAccessProblem } from '../services/problems';
 import { findUserByUsername } from '../services/auth';
 import { compileContest, contestPdfPath } from '../services/tex';
 import { getContestDir } from '../db/schema';
+import { isPlainName } from '../utils/safePath';
 
 async function auth(req: FastifyRequest, reply: FastifyReply) {
   const user = await getAuthUser(req);
@@ -146,6 +147,7 @@ export async function contestRoutes(app: FastifyInstance): Promise<void> {
     const lang = body.lang || 'russian';
     const kind = body.kind === 'tutorials' ? 'tutorials' : 'statements';
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'contestId required' });
+    if (!isPlainName(lang)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
     const contest = getContestForUser(id, user, reply);
     if (!contest) return;
     const problems = problemsWithLetters(id).map(p => ({ problemId: p.problemId, index: p.index }));
@@ -166,6 +168,7 @@ export async function contestRoutes(app: FastifyInstance): Promise<void> {
     const language = lang || 'russian';
     const k = kind === 'tutorials' ? 'tutorials' : 'statements';
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'contestId required' });
+    if (!isPlainName(language)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
     const contest = getContestForUser(id, user, reply);
     if (!contest) return;
     const pdf = contestPdfPath(id, k, language);
