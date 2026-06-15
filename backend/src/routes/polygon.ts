@@ -6,7 +6,7 @@ import { getAuthUser } from './auth';
 import { db, getProblemDir } from '../db/schema';
 import {
   getProblem, listSolutions, getAsset, listStatements,
-  getTestset, listTests,
+  getTestset, listTests, updateProblem, setTags,
 } from '../services/problems';
 import { importPackage } from '../services/import';
 
@@ -119,6 +119,35 @@ const TAG_MAP: Record<string, string> = {
   'time-limit-exceeded-or-accepted': 'TO', 'runtime-error': 'RE',
   'time-limit-exceeded-or-memory-limit-exceeded': 'TL',
 };
+
+// Fetch problem data that the downloadable package omits but the API exposes:
+// the general description, general tutorial and tags. Updates the local problem
+// in place. Each call is best-effort so a missing/empty value never fails the
+// import.
+export async function enrichFromApi(
+  localProblemId: number,
+  pgProblemId: number,
+  key: string,
+  secret: string,
+  warnings: string[],
+): Promise<void> {
+  const pid = String(pgProblemId);
+
+  try {
+    const desc = await polygonPost('problem.viewGeneralDescription', { problemId: pid }, key, secret);
+    if (typeof desc === 'string' && desc.trim()) updateProblem(localProblemId, { general_description: desc });
+  } catch (e: unknown) { warnings.push(`General description: ${(e as Error).message}`); }
+
+  try {
+    const tut = await polygonPost('problem.viewGeneralTutorial', { problemId: pid }, key, secret);
+    if (typeof tut === 'string' && tut.trim()) updateProblem(localProblemId, { general_tutorial: tut });
+  } catch (e: unknown) { warnings.push(`General tutorial: ${(e as Error).message}`); }
+
+  try {
+    const tags = await polygonPost('problem.viewTags', { problemId: pid }, key, secret);
+    if (Array.isArray(tags) && tags.length > 0) setTags(localProblemId, tags.map(String));
+  } catch (e: unknown) { warnings.push(`Tags: ${(e as Error).message}`); }
+}
 
 // Push all local problem data to an existing Polygon problem
 export async function pushToPolygon(
@@ -507,6 +536,12 @@ export async function polygonRoutes(app: FastifyInstance): Promise<void> {
       fs.writeFileSync(tmpPath, buf);
       const result = await importPackage(tmpPath, user.id, true);
       db.prepare('UPDATE problems SET polygon_problem_id = ? WHERE id = ?').run(pgId, result.problemId);
+
+      // Pull data that the downloadable package does NOT contain but the API
+      // exposes: general description, general tutorial and tags. Best-effort —
+      // failures are recorded as warnings and don't abort the import.
+      await enrichFromApi(result.problemId, pgId, key, secret, result.warnings);
+
       return ok({ ...result, polygonProblemId: pgId, packageId: pkg.id, packageRevision: pkg.revision });
     } catch (e: unknown) {
       return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
