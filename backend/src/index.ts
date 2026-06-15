@@ -9,6 +9,7 @@ import { initSchema, db } from './db/schema';
 import { authRoutes } from './routes/auth';
 import { problemRoutes } from './routes/problems';
 import { polygonRoutes } from './routes/polygon';
+import { contestRoutes } from './routes/contests';
 
 const PORT = parseInt(process.env.PORT ?? '5000');
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -69,6 +70,7 @@ async function main() {
   await app.register(authRoutes);
   await app.register(problemRoutes);
   await app.register(polygonRoutes);
+  await app.register(contestRoutes);
 
   // Health check
   app.get('/api/health', async () => ({ status: 'OK', time: new Date().toISOString() }));

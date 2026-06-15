@@ -276,6 +276,24 @@ export function initSchema(dataDir?: string): void {
       checker_path TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS contests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL DEFAULT '',
+      language TEXT NOT NULL DEFAULT 'russian',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS contest_problems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contest_id INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+      problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+      idx INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(contest_id, problem_id)
+    );
   `);
 
   // Migrations for new columns (safe to run multiple times)
@@ -304,6 +322,10 @@ export function getDataDir(): string {
 
 export function getProblemDir(problemId: number): string {
   return path.join(_dir, 'problems', String(problemId));
+}
+
+export function getContestDir(contestId: number): string {
+  return path.join(_dir, 'contests', String(contestId));
 }
 
 export function getPackagesDir(): string {

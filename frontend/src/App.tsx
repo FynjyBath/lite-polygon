@@ -7,6 +7,8 @@ import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
 import ProblemsPage from './pages/Problems';
 import ProblemPage from './pages/Problem';
+import ContestsPage from './pages/Contests';
+import ContestPage from './pages/Contest';
 
 interface AuthCtx {
   user: { id: number; username: string; mustChangePassword: boolean } | null;
@@ -62,6 +64,8 @@ export default function App() {
         <Route path="/" element={<RequireAuth><ProblemsPage /></RequireAuth>} />
         <Route path="/problems" element={<RequireAuth><ProblemsPage /></RequireAuth>} />
         <Route path="/problem/:id/*" element={<RequireAuth><ProblemPage /></RequireAuth>} />
+        <Route path="/contests" element={<RequireAuth><ContestsPage /></RequireAuth>} />
+        <Route path="/contest/:id" element={<RequireAuth><ContestPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthContext.Provider>

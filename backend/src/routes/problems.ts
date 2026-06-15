@@ -1407,11 +1407,6 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return ok({ id: result.lastInsertRowid });
   });
 
-  // contest.problems - stub
-  app.get('/api/contest.problems', async (req, reply) => {
-    const user = await auth(req, reply);
-    return ok([]);
-  });
 
   // problem.extraValidators
   app.get('/api/problem.extraValidators', async (req, reply) => {

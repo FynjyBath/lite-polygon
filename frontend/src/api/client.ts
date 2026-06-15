@@ -200,6 +200,26 @@ export const polygon = {
     post<{ polygonProblemId: number }>('polygon.linkProblem', { problemId, polygonProblemId }),
 };
 
+export interface Contest { id: number; owner_id: number; name: string; location: string; date: string; language: string; created_at: string; }
+export interface ContestProblem { problemId: number; index: string; shortName: string; revision: number; }
+
+export const contests = {
+  list: () => get<Contest[]>('contest.list'),
+  create: (name: string) => post<Contest>('contest.create', { name }),
+  info: (contestId: number) => get<Contest & { problems: ContestProblem[] }>('contest.info', { contestId }),
+  update: (contestId: number, fields: { name?: string; location?: string; date?: string; language?: string }) =>
+    post<null>('contest.update', { contestId, ...fields }),
+  delete: (contestId: number) => post<null>('contest.delete', { contestId }),
+  problems: (contestId: number) => get<ContestProblem[]>('contest.problems', { contestId }),
+  addProblem: (contestId: number, problemId: number) => post<ContestProblem[]>('contest.addProblem', { contestId, problemId }),
+  removeProblem: (contestId: number, problemId: number) => post<ContestProblem[]>('contest.removeProblem', { contestId, problemId }),
+  reorder: (contestId: number, problemIds: number[]) => post<ContestProblem[]>('contest.reorderProblems', { contestId, problemIds }),
+  compile: (contestId: number, lang: string, kind: 'statements' | 'tutorials') =>
+    post<{ ok: boolean; log: string }>('contest.compileStatements', { contestId, lang, kind }),
+  pdfUrl: (contestId: number, lang: string, kind: 'statements' | 'tutorials', download = false) =>
+    `${BASE}/contest.statementsPdf?contestId=${contestId}&lang=${encodeURIComponent(lang)}&kind=${kind}${download ? '&download=true' : ''}`,
+};
+
 // Types
 export interface VerifyStep { name: string; status: 'ok' | 'warn' | 'fail'; details?: string[]; }
 export interface VerifyReport { ok: boolean; steps: VerifyStep[]; }

@@ -53,6 +53,7 @@ export default function TopBar() {
         {user && (
           <>
             <Link to="/" style={{ color: '#aad4ff', fontSize: 12 }}>Problems</Link>
+            <Link to="/contests" style={{ color: '#aad4ff', fontSize: 12 }}>Contests</Link>
             <div className="user-info">
               <button
                 onClick={toggle}
