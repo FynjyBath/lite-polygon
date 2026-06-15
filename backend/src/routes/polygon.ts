@@ -121,7 +121,7 @@ const TAG_MAP: Record<string, string> = {
 };
 
 // Push all local problem data to an existing Polygon problem
-async function pushToPolygon(
+export async function pushToPolygon(
   localProblemId: number,
   pgProblemId: number,
   key: string,
@@ -139,7 +139,7 @@ async function pushToPolygon(
     catch (e: unknown) { errors.push(`${label}: ${(e as Error).message}`); }
   };
 
-  // 1. Problem info
+  // 1. Problem info (updateInfo only accepts the limits/IO/interactive flags)
   await tryStep('Problem info', async () => {
     const infoParams: Record<string, string> = {
       problemId: pid,
@@ -149,10 +149,20 @@ async function pushToPolygon(
       timeLimit: String(problem.time_limit ?? 1000),
       memoryLimit: String(Math.round(Number(problem.memory_limit ?? 268435456) / 1024 / 1024)),
     };
-    if (problem.general_description) infoParams.generalDescription = String(problem.general_description);
-    if (problem.general_tutorial) infoParams.generalTutorial = String(problem.general_tutorial);
     await polygonPost('problem.updateInfo', infoParams, key, secret);
   });
+
+  // 1b. General description / tutorial — dedicated methods, only when present.
+  if (problem.general_description) {
+    await tryStep('General description', async () => {
+      await polygonPost('problem.saveGeneralDescription', { problemId: pid, description: String(problem.general_description) }, key, secret);
+    });
+  }
+  if (problem.general_tutorial) {
+    await tryStep('General tutorial', async () => {
+      await polygonPost('problem.saveGeneralTutorial', { problemId: pid, tutorial: String(problem.general_tutorial) }, key, secret);
+    });
+  }
 
   // 2. Statements + statement resources
   const stmts = listStatements(localProblemId) as Record<string, string>[];
@@ -177,8 +187,10 @@ async function pushToPolygon(
     const stmtResDir = path.join(problemDir, 'statements', stmt.language);
     if (fs.existsSync(stmtResDir)) {
       for (const fname of fs.readdirSync(stmtResDir)) {
-        // Skip generated HTML/PDF and metadata json; upload example files
+        // Skip metadata json and our local LaTeX build artifacts — Polygon
+        // compiles its own statement PDF from the saved statement fields.
         if (fname.endsWith('.json')) continue;
+        if (fname === 'statement.pdf' || fname === 'statement.tex') continue;
         const fpath = path.join(stmtResDir, fname);
         if (!fs.statSync(fpath).isFile()) continue;
         await tryStep(`Statement resource (${stmt.language}/${fname})`, async () => {
@@ -351,10 +363,7 @@ async function pushToPolygon(
     }
 
     for (const test of tests) {
-      if (test.method === 'generated') {
-        errors.push(`Test ${test.idx}: generated tests must be set up via scripts on Polygon`);
-        continue;
-      }
+      if (test.method === 'generated') continue; // handled via the script below
       const numStr = String(test.idx).padStart(2, '0');
       const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', numStr));
       if (!fs.existsSync(inputPath)) { errors.push(`Test ${test.idx}: input file not found`); continue; }
@@ -367,6 +376,8 @@ async function pushToPolygon(
         };
         if (groupsEnabled && test.group_name) testParams.testGroup = String(test.group_name);
         if (test.description) testParams.testDescription = String(test.description);
+        // Mark sample tests so Polygon shows them in the statement examples.
+        if (test.sample) testParams.testUseInStatements = 'true';
         // Push points for any test that has them (for EACH_TEST per test; for
         // COMPLETE_GROUP Polygon stores the total on the last test of the group)
         if (pointsEnabled && (test.points as number) > 0) {
@@ -374,6 +385,32 @@ async function pushToPolygon(
         }
         await polygonPost('problem.saveTest', testParams, key, secret);
       });
+    }
+
+    // Generated tests: push a generation script (one `cmd > index` line per
+    // test) so Polygon reproduces them at the right indices.
+    const generatedTests = tests.filter(t => t.method === 'generated' && t.cmd);
+    if (generatedTests.length > 0) {
+      await tryStep('Test generation script', async () => {
+        const source = generatedTests.map(t => `${String(t.cmd).trim()} > ${t.idx}`).join('\n');
+        await polygonPost('problem.saveScript', { problemId: pid, testset: 'tests', source }, key, secret);
+      });
+      // Assign generated tests to their groups (script tests aren't saveTest'd).
+      if (groupsEnabled) {
+        const byGroup = new Map<string, number[]>();
+        for (const t of generatedTests) {
+          if (!t.group_name) continue;
+          if (!byGroup.has(t.group_name)) byGroup.set(t.group_name, []);
+          byGroup.get(t.group_name)!.push(t.idx);
+        }
+        for (const [gname, idxs] of byGroup) {
+          await tryStep(`Group assignment "${gname}" (generated)`, async () => {
+            await polygonPost('problem.setTestGroup', {
+              problemId: pid, testset: 'tests', testGroup: gname, testIndices: idxs.join(','),
+            }, key, secret);
+          });
+        }
+      }
     }
 
     // Save test groups AFTER all tests are pushed (groups are created by the saveTest calls above)
