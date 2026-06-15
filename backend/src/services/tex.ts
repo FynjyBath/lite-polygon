@@ -10,6 +10,46 @@ const TEMPLATES_DIR = path.join(__dirname, '..', '..', 'templates', 'statements'
 
 export interface CompileResult { ok: boolean; log: string; pdfPath?: string; }
 
+// pdflatex + inputenc(utf8) only knows a limited set of Unicode characters.
+// Authors routinely paste "fancy" punctuation/operators (a real minus sign,
+// ≤, ≥, ×, non-breaking spaces, …) which otherwise abort the compile with
+// "Unicode character ... not set up for use with LaTeX". We declare fallbacks
+// for the common offenders; \ensuremath keeps math operators valid in both
+// text and math mode. Injected right after \usepackage[utf8]{inputenc}.
+const UNICODE_FIXES = [
+  '% --- auto-injected Unicode fallbacks (lite-polygon) ---',
+  '\\DeclareUnicodeCharacter{2212}{\\ensuremath{-}}',   // − minus sign
+  '\\DeclareUnicodeCharacter{2264}{\\ensuremath{\\le}}',  // ≤
+  '\\DeclareUnicodeCharacter{2265}{\\ensuremath{\\ge}}',  // ≥
+  '\\DeclareUnicodeCharacter{2260}{\\ensuremath{\\ne}}',  // ≠
+  '\\DeclareUnicodeCharacter{2248}{\\ensuremath{\\approx}}', // ≈
+  '\\DeclareUnicodeCharacter{00D7}{\\ensuremath{\\times}}',  // ×
+  '\\DeclareUnicodeCharacter{00B7}{\\ensuremath{\\cdot}}',   // ·
+  '\\DeclareUnicodeCharacter{2022}{\\ensuremath{\\bullet}}', // •
+  '\\DeclareUnicodeCharacter{2208}{\\ensuremath{\\in}}',     // ∈
+  '\\DeclareUnicodeCharacter{2209}{\\ensuremath{\\notin}}',  // ∉
+  '\\DeclareUnicodeCharacter{2211}{\\ensuremath{\\sum}}',    // ∑
+  '\\DeclareUnicodeCharacter{221A}{\\ensuremath{\\sqrt{}}}', // √
+  '\\DeclareUnicodeCharacter{221E}{\\ensuremath{\\infty}}',  // ∞
+  '\\DeclareUnicodeCharacter{2192}{\\ensuremath{\\to}}',     // →
+  '\\DeclareUnicodeCharacter{21D2}{\\ensuremath{\\Rightarrow}}', // ⇒
+  '\\DeclareUnicodeCharacter{2026}{\\ldots}',          // …
+  '\\DeclareUnicodeCharacter{2013}{--}',               // – en dash
+  '\\DeclareUnicodeCharacter{2014}{---}',              // — em dash
+  '\\DeclareUnicodeCharacter{00A0}{~}',                // non-breaking space
+  '\\DeclareUnicodeCharacter{2009}{\\,}',              // thin space
+  '\\DeclareUnicodeCharacter{202F}{\\,}',              // narrow nbsp
+  '\\DeclareUnicodeCharacter{2018}{`}',                // ‘
+  '\\DeclareUnicodeCharacter{2019}{\'}',               // ’
+  '\\DeclareUnicodeCharacter{201C}{``}',               // “
+  '\\DeclareUnicodeCharacter{201D}{\'\'}',             // ”
+  '\\DeclareUnicodeCharacter{2032}{\\ensuremath{{}^\\prime}}', // ′
+].join('\n');
+
+function injectUnicodeFixes(mainTex: string): string {
+  return mainTex.replace(/(\\usepackage\s*\[utf8\]\s*\{inputenc\})/, `$1\n${UNICODE_FIXES}`);
+}
+
 function spawnPdflatex(cwd: string, file: string): Promise<{ code: number | null }> {
   return new Promise((resolve) => {
     const p = spawn('pdflatex', ['-interaction=nonstopmode', '-halt-on-error', file], {
@@ -89,10 +129,10 @@ export async function compileStatementPdf(problemId: number, lang: string): Prom
   const statementsTpl = fs.readFileSync(path.join(TEMPLATES_DIR, 'statements.ftl'), 'utf-8');
 
   const statementTex = renderFtl(problemTpl, model);
-  const mainTex = renderFtl(statementsTpl, {
+  const mainTex = injectUnicodeFixes(renderFtl(statementsTpl, {
     contest: { name: '', location: '', date: '', language: lang },
     statements: [{ file: 'statement.tex' }],
-  });
+  }));
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ltex-'));
   try {
