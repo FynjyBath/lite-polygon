@@ -77,6 +77,7 @@ function buildModel(problemId: number, lang: string) {
 
   const sampleTests: { inputFile: string; outputFile: string }[] = [];
   const exampleFiles: { name: string; content: string }[] = [];
+  let maxExampleLineLen = 0;
   const testset = getTestset(problemId, 'tests');
   if (testset) {
     const problemDir = getProblemDir(problemId);
@@ -89,8 +90,13 @@ function buildModel(problemId: number, lang: string) {
       const outName = `example_${k + 1}_out`;
       // Cap example size so a giant sample cannot blow up the PDF.
       const read = (p: string) => fs.existsSync(p) ? fs.readFileSync(p, 'utf-8').slice(0, 20000) : '';
-      exampleFiles.push({ name: inName, content: read(inPath) });
-      exampleFiles.push({ name: outName, content: read(ansPath) });
+      const inContent = read(inPath);
+      const outContent = read(ansPath);
+      for (const line of `${inContent}\n${outContent}`.split('\n')) {
+        if (line.length > maxExampleLineLen) maxExampleLineLen = line.length;
+      }
+      exampleFiles.push({ name: inName, content: inContent });
+      exampleFiles.push({ name: outName, content: outContent });
       sampleTests.push({ inputFile: inName, outputFile: outName });
     });
   }
@@ -113,8 +119,12 @@ function buildModel(problemId: number, lang: string) {
       sampleTests,
     },
   };
-  return { model, exampleFiles };
+  return { model, exampleFiles, maxExampleLineLen };
 }
+
+// The side-by-side example column fits roughly this many monospace characters
+// on A4; longer sample lines overflow it, so we stack input above output.
+const SIDE_BY_SIDE_MAX_COLS = 30;
 
 /**
  * Render the Polygon statement templates for one problem/language and compile
@@ -123,12 +133,19 @@ function buildModel(problemId: number, lang: string) {
  * callers can surface LaTeX errors.
  */
 export async function compileStatementPdf(problemId: number, lang: string): Promise<CompileResult> {
-  const { model, exampleFiles } = buildModel(problemId, lang);
+  const { model, exampleFiles, maxExampleLineLen } = buildModel(problemId, lang);
 
   const problemTpl = fs.readFileSync(path.join(TEMPLATES_DIR, 'problem.tex'), 'utf-8');
   const statementsTpl = fs.readFileSync(path.join(TEMPLATES_DIR, 'statements.ftl'), 'utf-8');
 
-  const statementTex = renderFtl(problemTpl, model);
+  let statementTex = renderFtl(problemTpl, model);
+  // If any sample line is too wide for the side-by-side columns, switch to the
+  // stacked layout (input above output) so examples don't run off the page.
+  if (maxExampleLineLen > SIDE_BY_SIDE_MAX_COLS) {
+    statementTex = statementTex
+      .replace(/\\begin\{example\}/g, '\\begin{examplewide}')
+      .replace(/\\end\{example\}/g, '\\end{examplewide}');
+  }
   const mainTex = injectUnicodeFixes(renderFtl(statementsTpl, {
     contest: { name: '', location: '', date: '', language: lang },
     statements: [{ file: 'statement.tex' }],
