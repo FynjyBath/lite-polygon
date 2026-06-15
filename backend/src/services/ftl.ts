@@ -47,8 +47,60 @@ function findTagEnd(s: string, start: number): number {
   throw new Error('Unterminated FreeMarker directive');
 }
 
+// Find the '>' that closes a directive starting at `from`, honouring
+// parentheses and strings so a `>` used as "greater than" inside the directive
+// is not mistaken for the closer.
+function findGt(line: string, from: number): number {
+  let depth = 0, inStr = false;
+  for (let i = from; i < line.length; i++) {
+    const c = line[i];
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === '>' && depth <= 0) return i;
+  }
+  return -1;
+}
+
+// Split a single line into its directive tags and the remaining text.
+function splitLineDirectives(line: string): { dirs: string; rest: string } {
+  let i = 0, dirs = '', rest = '';
+  while (i < line.length) {
+    if (line.startsWith('</#', i)) {
+      const e = line.indexOf('>', i + 3);
+      if (e < 0) { rest += line.slice(i); break; }
+      dirs += line.slice(i, e + 1); i = e + 1;
+    } else if (line.startsWith('<#', i)) {
+      const e = findGt(line, i + 2);
+      if (e < 0) { rest += line.slice(i); break; }
+      dirs += line.slice(i, e + 1); i = e + 1;
+    } else { rest += line[i]; i++; }
+  }
+  return { dirs, rest };
+}
+
+// FreeMarker-style whitespace stripping: a source line that contains only FTL
+// directives (and whitespace) is removed entirely — its indentation and line
+// break are dropped. This avoids stray blank lines (e.g. inside LaTeX example
+// tabulars, where an \obeylines \par would spawn a phantom row). Comments must
+// already be removed before calling this.
+function stripDirectiveWhitespace(src: string): string {
+  const lines = src.split('\n');
+  let out = '';
+  for (let k = 0; k < lines.length; k++) {
+    const { dirs, rest } = splitLineDirectives(lines[k]);
+    if (dirs.length > 0 && rest.trim() === '') {
+      out += dirs; // directive-only line: keep tags, drop whitespace + newline
+    } else {
+      out += lines[k] + (k < lines.length - 1 ? '\n' : '');
+    }
+  }
+  return out;
+}
+
 function tokenize(tpl: string): Tok[] {
-  const src = tpl.replace(/<#--[\s\S]*?-->/g, '');
+  const src = stripDirectiveWhitespace(tpl.replace(/<#--[\s\S]*?-->/g, ''));
   const toks: Tok[] = [];
   let i = 0;
   while (i < src.length) {
