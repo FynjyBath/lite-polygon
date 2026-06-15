@@ -115,7 +115,7 @@ export const problems = {
   interactor: (problemId: number) => get<Asset | null>('problem.interactor', { problemId }),
   setInteractor: (data: Record<string, unknown>) => post<null>('problem.setInteractor', data),
   tests: (problemId: number, testset?: string) => get<TestEntry[]>('problem.tests', { problemId, testset }),
-  saveTest: (data: Record<string, unknown>) => post<{ testIndex: number }>('problem.saveTest', data),
+  saveTest: (data: Record<string, unknown>) => post<{ testIndex: number; inputBytes?: number }>('problem.saveTest', data),
   deleteTest: (problemId: number, testIndex: number, testset?: string) =>
     post<null>('problem.deleteTest', { problemId, testIndex, testset }),
   testInput: (problemId: number, testIndex: number, testset?: string): string =>

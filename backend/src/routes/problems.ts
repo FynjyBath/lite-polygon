@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { getAuthUser } from './auth';
 import { findUserByUsername } from '../services/auth';
 import {
@@ -603,6 +604,37 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     const testset = getOrCreateTestset(id, body.testset ?? 'tests');
     const idx = parseInt(body.testIndex ?? '0') || (listTests(testset.id).length + 1);
 
+    // Write the input first (when provided), verifying integrity and writing
+    // atomically, so a truncated/corrupted upload never leaves a partial input
+    // file or a test row without its data. Only after a clean write do we
+    // create/update the test row.
+    let inputBytes: number | undefined;
+    if (body.input !== undefined) {
+      // If the client sent a checksum, the received content must match it —
+      // this catches anything that got cut off or mangled in transit.
+      if (body.inputSha256) {
+        const actual = crypto.createHash('sha256').update(body.input, 'utf-8').digest('hex');
+        if (actual !== body.inputSha256) {
+          return reply.code(400).send({ status: 'FAILED', comment: 'Upload integrity check failed (content was truncated or corrupted in transit). Test was not saved — please retry.' });
+        }
+      }
+      const problemDir = getProblemDir(id);
+      const testNum = String(idx).padStart(2, '0');
+      const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', testNum));
+      fs.mkdirSync(path.dirname(inputPath), { recursive: true });
+      const tmpPath = `${inputPath}.tmp-${process.pid}-${Date.now()}`;
+      try {
+        const fd = fs.openSync(tmpPath, 'w');
+        try { fs.writeFileSync(fd, body.input, 'utf-8'); fs.fsyncSync(fd); }
+        finally { fs.closeSync(fd); }
+        fs.renameSync(tmpPath, inputPath); // atomic replace
+      } catch (e: unknown) {
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+        return reply.code(500).send({ status: 'FAILED', comment: `Failed to write test input: ${(e as Error).message}` });
+      }
+      inputBytes = Buffer.byteLength(body.input, 'utf-8');
+    }
+
     upsertTest(testset.id, idx, {
       method: (body.method ?? 'manual') as 'manual' | 'generated',
       cmd: body.scriptLine ?? body.cmd ?? '',
@@ -612,17 +644,8 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       points: parseFloat(body.points ?? '0') || 0,
     });
 
-    // Write input to disk if provided
-    if (body.input !== undefined) {
-      const problemDir = getProblemDir(id);
-      const testNum = String(idx).padStart(2, '0');
-      const inputPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', testNum));
-      fs.mkdirSync(path.dirname(inputPath), { recursive: true });
-      fs.writeFileSync(inputPath, body.input, 'utf-8');
-    }
-
     updateProblem(id, { modified: 1 });
-    return ok({ testIndex: idx });
+    return ok({ testIndex: idx, inputBytes });
   });
 
   // problem.deleteTest

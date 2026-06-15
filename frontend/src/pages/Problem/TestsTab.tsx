@@ -89,14 +89,15 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     if (!files.length) return;
     setUploading(true); setMsg(''); setError('');
     let added = 0;
+    let failedFile = '';
     for (const file of files) {
       try {
         const content = await readFile(file);
-        await problems.saveTest({ problemId, method: 'manual', input: content, sample: 'false', description: file.name });
+        await saveTestChecked({ problemId, method: 'manual', sample: 'false', description: file.name }, content);
         added++;
-      } catch (err: unknown) { setError((err as Error).message); break; }
+      } catch (err: unknown) { failedFile = file.name; setError(`Stopped at "${file.name}": ${(err as Error).message}. ${added} of ${files.length} test(s) uploaded and verified — nothing partial was saved.`); break; }
     }
-    setMsg(`Uploaded ${added} test(s)`);
+    if (!failedFile) setMsg(`Uploaded and verified ${added} test(s).`);
     setUploading(false);
     if (uploadRef.current) uploadRef.current.value = '';
     reload();
@@ -109,6 +110,26 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
       r.onerror = () => rej(new Error('Read error'));
       r.readAsText(file);
     });
+  }
+
+  async function sha256Hex(s: string): Promise<string> {
+    const data = new TextEncoder().encode(s);
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Save a manual test, verifying end-to-end that the whole input arrived: the
+  // server re-hashes the received content and rejects a truncated/corrupted
+  // upload, and we double-check the stored byte count. Throws on any mismatch
+  // so a partial test is never silently accepted.
+  async function saveTestChecked(data: Record<string, unknown>, content: string) {
+    const inputSha256 = await sha256Hex(content);
+    const res = await problems.saveTest({ ...data, input: content, inputSha256 });
+    const expected = new TextEncoder().encode(content).length;
+    if (res.inputBytes !== undefined && res.inputBytes !== expected) {
+      throw new Error(`stored ${res.inputBytes} of ${expected} bytes`);
+    }
+    return res;
   }
 
   // ── Inline row edit ───────────────────────────────────────────────────────
@@ -163,15 +184,16 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
   async function handleAddTest(e: React.FormEvent) {
     e.preventDefault(); setMsg(''); setError('');
     try {
-      await problems.saveTest({
+      const base = {
         problemId, method: newTest.method,
-        input: newTest.method === 'manual' ? newTest.input : undefined,
         cmd: newTest.method === 'generated' ? newTest.cmd : undefined,
         scriptLine: newTest.method === 'generated' ? newTest.cmd : undefined,
         description: newTest.description,
         sample: String(newTest.sample),
         group: newTest.group, points: newTest.points,
-      });
+      };
+      if (newTest.method === 'manual') await saveTestChecked(base, newTest.input);
+      else await problems.saveTest(base);
       setNewTest({ method: 'manual', input: '', cmd: '', description: '', sample: false, group: '', points: '0' });
       setMsg('Test added'); reload();
     } catch (err: unknown) { setError((err as Error).message); }
@@ -282,14 +304,21 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
 
       setZipProgress({ done: 0, total: inputs.length });
       let added = 0;
+      let failedEntry = '';
       for (const entry of inputs) {
-        const content = await entry.async('string');
         const base = entry.name.split('/').pop() || entry.name;
-        await problems.saveTest({ problemId, method: 'manual', input: content, sample: 'false', description: base });
+        try {
+          const content = await entry.async('string');
+          await saveTestChecked({ problemId, method: 'manual', sample: 'false', description: base }, content);
+        } catch (err: unknown) {
+          failedEntry = base;
+          setError(`Stopped at "${base}": ${(err as Error).message}. ${added} of ${inputs.length} test(s) imported and verified — nothing partial was saved.`);
+          break;
+        }
         added++;
         setZipProgress({ done: added, total: inputs.length });
       }
-      setMsg(`Imported ${added} test(s) from ${file.name}`);
+      if (!failedEntry) setMsg(`Imported and verified ${added} test(s) from ${file.name}.`);
       reload();
     } catch (err: unknown) {
       setError('Zip import failed: ' + (err as Error).message);
