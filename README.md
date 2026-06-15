@@ -23,6 +23,20 @@ A self-hosted, locally-run clone of [Codeforces Polygon](https://polygon.codefor
 - Node.js 18+
 - g++ (C++17 support required; g++20/23 optional)
 - npm
+- A LaTeX toolchain for compiling statement PDFs (`pdflatex` + Cyrillic/T2A
+  support). On Debian/Ubuntu:
+
+  ```bash
+  sudo apt-get install --no-install-recommends \
+    texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+    texlive-lang-cyrillic texlive-fonts-recommended texlive-science \
+    texlive-plain-generic
+  ```
+
+  Statements are rendered with the bundled Polygon templates in
+  `backend/templates/statements/` (FreeMarker → LaTeX → PDF). If `pdflatex`
+  is missing, statement-PDF compilation reports an error but the rest of the
+  app keeps working.
 
 ### Install
 

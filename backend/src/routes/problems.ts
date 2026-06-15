@@ -24,6 +24,7 @@ import { buildPackage } from '../packages/builder';
 import { compileAsset, compileSolution, runInvocation, generateTestAnswer, generateTestInput } from '../judging/judging';
 import { expandScriptToLines } from '../services/freemarker';
 import { verifyProblem } from '../services/verify';
+import { compileStatementPdf, statementPdfPath } from '../services/tex';
 import { generateProblemXml } from '../polygon-xml/generator';
 import { buildPackage as _buildPackage } from '../packages/builder';
 
@@ -242,6 +243,42 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     // Simple HTML render
     const html = renderStatementHtml(stmt, id, lang ?? 'russian');
     return ok({ html, tutorialHtml: stmt.tutorial ? `<div>${escHtml(stmt.tutorial)}</div>` : '' });
+  });
+
+  // problem.compileStatement — render the Polygon LaTeX templates and run
+  // pdflatex; returns the compile log. The PDF is fetched via statementPdf.
+  app.post('/api/problem.compileStatement', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: string | number; lang?: string };
+    const id = parseInt(String(body.problemId ?? ''));
+    const lang = body.lang ?? 'russian';
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!isPlainName(lang)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
+    if (!getProblemForUser(id, user, reply)) return;
+    try {
+      const result = await compileStatementPdf(id, lang);
+      return ok(result);
+    } catch (e: unknown) {
+      return reply.code(400).send({ status: 'FAILED', comment: (e as Error).message });
+    }
+  });
+
+  // problem.statementPdf — stream the last compiled PDF for inline view/download
+  app.get('/api/problem.statementPdf', async (req, reply) => {
+    const user = await auth(req, reply);
+    const { problemId, lang, download } = req.query as { problemId?: string; lang?: string; download?: string };
+    const id = parseInt(problemId ?? '');
+    const language = lang ?? 'russian';
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!isPlainName(language)) return reply.code(400).send({ status: 'FAILED', comment: 'Invalid lang' });
+    if (!getProblemForUser(id, user, reply)) return;
+    const pdf = statementPdfPath(id, language);
+    if (!fs.existsSync(pdf)) return reply.code(404).send({ status: 'FAILED', comment: 'No compiled PDF — compile first' });
+    reply.header('Content-Type', 'application/pdf');
+    const problem = getProblem(id);
+    const fname = `${problem?.short_name ?? 'statement'}-${language}.pdf`;
+    reply.header('Content-Disposition', `${download === 'true' ? 'attachment' : 'inline'}; filename="${fname}"`);
+    return reply.send(fs.createReadStream(pdf));
   });
 
   // problem.files

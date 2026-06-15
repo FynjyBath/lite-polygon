@@ -1,0 +1,147 @@
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { spawn } from 'child_process';
+import { getProblemDir } from '../db/schema';
+import { getProblem, getStatement, getTestset, listTests } from './problems';
+import { renderFtl } from './ftl';
+
+const TEMPLATES_DIR = path.join(__dirname, '..', '..', 'templates', 'statements');
+
+export interface CompileResult { ok: boolean; log: string; pdfPath?: string; }
+
+function spawnPdflatex(cwd: string, file: string): Promise<{ code: number | null }> {
+  return new Promise((resolve) => {
+    const p = spawn('pdflatex', ['-interaction=nonstopmode', '-halt-on-error', file], {
+      cwd,
+      env: {
+        PATH: process.env.PATH ?? '/usr/bin:/bin',
+        HOME: os.tmpdir(),
+        TEXMFVAR: path.join(os.tmpdir(), 'texmf-var'),
+      },
+    });
+    p.on('error', () => resolve({ code: -1 }));
+    p.on('close', (code) => resolve({ code }));
+    // Drain output so the process is not blocked on a full pipe buffer.
+    p.stdout?.on('data', () => {});
+    p.stderr?.on('data', () => {});
+  });
+}
+
+/** Build the LaTeX data model for one statement from the stored problem data. */
+function buildModel(problemId: number, lang: string) {
+  const problem = getProblem(problemId);
+  if (!problem) throw new Error('Problem not found');
+  const stmt = getStatement(problemId, lang) as Record<string, unknown> | undefined;
+  if (!stmt) throw new Error(`No statement for language "${lang}"`);
+
+  const sampleTests: { inputFile: string; outputFile: string }[] = [];
+  const exampleFiles: { name: string; content: string }[] = [];
+  const testset = getTestset(problemId, 'tests');
+  if (testset) {
+    const problemDir = getProblemDir(problemId);
+    const samples = listTests(testset.id).filter(t => t.sample);
+    samples.forEach((t, k) => {
+      const nn = String(t.idx).padStart(2, '0');
+      const inPath = path.join(problemDir, testset.input_path_pattern.replace('%02d', nn));
+      const ansPath = path.join(problemDir, testset.answer_path_pattern.replace('%02d', nn));
+      const inName = `example_${k + 1}_in`;
+      const outName = `example_${k + 1}_out`;
+      // Cap example size so a giant sample cannot blow up the PDF.
+      const read = (p: string) => fs.existsSync(p) ? fs.readFileSync(p, 'utf-8').slice(0, 20000) : '';
+      exampleFiles.push({ name: inName, content: read(inPath) });
+      exampleFiles.push({ name: outName, content: read(ansPath) });
+      sampleTests.push({ inputFile: inName, outputFile: outName });
+    });
+  }
+
+  const model = {
+    language: lang,
+    problem: {
+      name: (stmt.name as string) || problem.short_name,
+      inputFile: problem.input_file || 'stdin',
+      outputFile: problem.output_file || 'stdout',
+      timeLimit: problem.time_limit || 1000,
+      memoryLimit: problem.memory_limit || 268435456,
+      legend: (stmt.legend as string) || '',
+      input: (stmt.input_section as string) || '',
+      output: (stmt.output_section as string) || '',
+      interaction: (stmt.interaction as string) || '',
+      scoring: (stmt.scoring as string) || '',
+      notes: (stmt.notes as string) || '',
+      tutorial: (stmt.tutorial as string) || '',
+      sampleTests,
+    },
+  };
+  return { model, exampleFiles };
+}
+
+/**
+ * Render the Polygon statement templates for one problem/language and compile
+ * them to PDF with pdflatex. The PDF is written to
+ * `<problemDir>/statements/<lang>/statement.pdf`. Returns the compile log so
+ * callers can surface LaTeX errors.
+ */
+export async function compileStatementPdf(problemId: number, lang: string): Promise<CompileResult> {
+  const { model, exampleFiles } = buildModel(problemId, lang);
+
+  const problemTpl = fs.readFileSync(path.join(TEMPLATES_DIR, 'problem.tex'), 'utf-8');
+  const statementsTpl = fs.readFileSync(path.join(TEMPLATES_DIR, 'statements.ftl'), 'utf-8');
+
+  const statementTex = renderFtl(problemTpl, model);
+  const mainTex = renderFtl(statementsTpl, {
+    contest: { name: '', location: '', date: '', language: lang },
+    statements: [{ file: 'statement.tex' }],
+  });
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ltex-'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'statement.tex'), statementTex, 'utf-8');
+    fs.writeFileSync(path.join(tmp, 'statements.tex'), mainTex, 'utf-8');
+    fs.copyFileSync(path.join(TEMPLATES_DIR, 'olymp.sty'), path.join(tmp, 'olymp.sty'));
+    for (const ex of exampleFiles) fs.writeFileSync(path.join(tmp, ex.name), ex.content, 'utf-8');
+
+    // Two passes so \lastpage / section references resolve.
+    await spawnPdflatex(tmp, 'statements.tex');
+    const second = await spawnPdflatex(tmp, 'statements.tex');
+
+    const logPath = path.join(tmp, 'statements.log');
+    const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf-8') : '(no log produced)';
+    const builtPdf = path.join(tmp, 'statements.pdf');
+
+    if (second.code === -1) {
+      return { ok: false, log: 'pdflatex is not installed or failed to start.' };
+    }
+    if (!fs.existsSync(builtPdf)) {
+      return { ok: false, log: extractErrors(log) };
+    }
+
+    const outDir = path.join(getProblemDir(problemId), 'statements', lang);
+    fs.mkdirSync(outDir, { recursive: true });
+    const pdfPath = path.join(outDir, 'statement.pdf');
+    fs.copyFileSync(builtPdf, pdfPath);
+    // Keep the rendered .tex next to the PDF for debugging/transparency.
+    fs.writeFileSync(path.join(outDir, 'statement.tex'), statementTex, 'utf-8');
+    return { ok: true, log: extractErrors(log), pdfPath };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+export function statementPdfPath(problemId: number, lang: string): string {
+  return path.join(getProblemDir(problemId), 'statements', lang, 'statement.pdf');
+}
+
+/** Pull the meaningful lines out of a LaTeX log for display. */
+function extractErrors(log: string): string {
+  const lines = log.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.startsWith('!') || /^l\.\d+/.test(l) || /Warning:/.test(l) || /not found/.test(l)) {
+      out.push(l);
+      if (lines[i + 1]) out.push(lines[i + 1]);
+    }
+  }
+  return (out.join('\n').trim() || 'Compiled successfully').slice(0, 4000);
+}

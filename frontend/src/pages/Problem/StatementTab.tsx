@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { problems, Statement } from '../../api/client';
-import { latexToHtml } from '../../utils/latexToHtml';
-import 'katex/dist/katex.min.css';
 
 interface Props { problemId: number; }
 
@@ -18,15 +16,6 @@ const SECTIONS: { key: keyof Form; label: string; short: string }[] = [
   { key: 'scoring',     label: 'Scoring',                     short: 'Scoring' },
   { key: 'tutorial',    label: 'Tutorial / Разбор',          short: 'Tutorial' },
 ];
-
-function useDebounce<T>(value: T, ms: number): T {
-  const [dv, setDv] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDv(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return dv;
-}
 
 function LaTeXEditor({ value, onChange, placeholder }: {
   value: string; onChange: (v: string) => void; placeholder?: string;
@@ -61,83 +50,6 @@ function LaTeXEditor({ value, onChange, placeholder }: {
   );
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function StatementPreview({ form, examples }: { form: Form; examples: string[][] }) {
-  const html = useCallback((text: string) => latexToHtml(text), []);
-  const hasContent = Object.values(form).some(v => v.trim());
-  if (!hasContent) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999', fontSize: 13 }}>
-      Начните вводить текст — предпросмотр появится здесь
-    </div>
-  );
-  return (
-    <div className="stmt-preview">
-      {form.name && <h1 className="stmt-title">{form.name}</h1>}
-      {form.legend && (
-        <section className="stmt-section">
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.legend) }} />
-        </section>
-      )}
-      {form.input && (
-        <section className="stmt-section">
-          <h3 className="stmt-h3">Входные данные</h3>
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.input) }} />
-        </section>
-      )}
-      {form.output && (
-        <section className="stmt-section">
-          <h3 className="stmt-h3">Выходные данные</h3>
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.output) }} />
-        </section>
-      )}
-      {examples.length > 0 && (
-        <section className="stmt-section">
-          <h3 className="stmt-h3">Примеры</h3>
-          {examples.map(([inp, out], i) => (
-            <div key={i} className="stmt-example">
-              <div className="stmt-example-col">
-                <div className="stmt-example-label">Входные данные</div>
-                <pre className="stmt-example-pre">{inp}</pre>
-              </div>
-              <div className="stmt-example-col">
-                <div className="stmt-example-label">Выходные данные</div>
-                <pre className="stmt-example-pre">{out}</pre>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
-      {form.notes && (
-        <section className="stmt-section">
-          <h3 className="stmt-h3">Примечания</h3>
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.notes) }} />
-        </section>
-      )}
-      {form.interaction && (
-        <section className="stmt-section">
-          <h3 className="stmt-h3">Interaction</h3>
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.interaction) }} />
-        </section>
-      )}
-      {form.scoring && (
-        <section className="stmt-section">
-          <h3 className="stmt-h3">Scoring</h3>
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.scoring) }} />
-        </section>
-      )}
-      {form.tutorial && (
-        <section className="stmt-section stmt-tutorial">
-          <h3 className="stmt-h3">Tutorial</h3>
-          <div className="stmt-body" dangerouslySetInnerHTML={{ __html: html(form.tutorial) }} />
-        </section>
-      )}
-    </div>
-  );
-}
-
 export default function StatementTab({ problemId }: Props) {
   const [stmts, setStmts] = useState<Statement[]>([]);
   const [lang, setLang] = useState('russian');
@@ -148,15 +60,19 @@ export default function StatementTab({ problemId }: Props) {
   const [uploadingResource, setUploadingResource] = useState(false);
   const [showAddLang, setShowAddLang] = useState(false);
   const [newLangInput, setNewLangInput] = useState('');
-  const [examples, setExamples] = useState<string[][]>([]);
   const [activeSection, setActiveSection] = useState<keyof Form>('legend');
   const resourceInputRef = useRef<HTMLInputElement>(null);
 
-  const debouncedForm = useDebounce(form, 250);
+  // Polygon LaTeX -> PDF compilation
+  const [compiling, setCompiling] = useState(false);
+  const [compileLog, setCompileLog] = useState('');
+  const [pdfVersion, setPdfVersion] = useState(0); // cache-buster; >0 means a PDF exists
+  const [showLog, setShowLog] = useState(false);
 
   useEffect(() => { reload(); }, [problemId]);
   useEffect(() => { if (lang) reloadResources(); }, [lang, problemId]);
-  useEffect(() => { loadExamples(); }, [resources, lang, problemId]);
+  // Reset the PDF view when switching languages.
+  useEffect(() => { setPdfVersion(0); setCompileLog(''); setShowLog(false); }, [lang]);
 
   function reload() {
     problems.statements(problemId).then(list => {
@@ -169,26 +85,24 @@ export default function StatementTab({ problemId }: Props) {
     problems.statementResources(problemId, lang).then(setResources).catch(() => setResources([]));
   }
 
-  async function loadExamples() {
-    const exList: string[][] = [];
-    let i = 1;
-    while (true) {
-      const numStr = String(i).padStart(2, '0');
-      const inName = `example.${numStr}`;
-      const outName = `example.${numStr}.a`;
-      if (!resources.includes(inName) || !resources.includes(outName)) break;
-      try {
-        const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-        const [inRes, outRes] = await Promise.all([
-          fetch(`${base}/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${inName}`, { credentials: 'include' }),
-          fetch(`${base}/api/problem.viewStatementResource?problemId=${problemId}&lang=${lang}&name=${outName}`, { credentials: 'include' }),
-        ]);
-        if (!inRes.ok || !outRes.ok) break;
-        exList.push([await inRes.text(), await outRes.text()]);
-        i++;
-      } catch { break; }
-    }
-    setExamples(exList);
+  async function handleCompile() {
+    setCompiling(true); setError(''); setMsg(''); setCompileLog(''); setShowLog(false);
+    try {
+      // Save current edits first so the PDF reflects them.
+      await problems.saveStatement({ problemId, lang, name: form.name, legend: form.legend,
+        input: form.input, output: form.output, scoring: form.scoring, interaction: form.interaction,
+        notes: form.notes, tutorial: form.tutorial });
+      const r = await problems.compileStatement(problemId, lang);
+      setCompileLog(r.log || '');
+      if (r.ok) {
+        setPdfVersion(v => v + 1);
+        setMsg('PDF compiled');
+      } else {
+        setShowLog(true);
+        setError('LaTeX compilation failed — see log');
+      }
+    } catch (err: unknown) { setError((err as Error).message); }
+    finally { setCompiling(false); }
   }
 
   function selectStmt(s: Statement) {
@@ -212,42 +126,6 @@ export default function StatementTab({ problemId }: Props) {
         notes: form.notes, tutorial: form.tutorial });
       setMsg('Saved'); reload();
     } catch (err: unknown) { setError((err as Error).message); }
-  }
-
-  // Export the rendered statement to PDF by opening a clean print window and
-  // letting the browser "Save as PDF". KaTeX renders crisply via its CDN CSS.
-  function handleExportPdf() {
-    const h = (t: string) => latexToHtml(t);
-    const sec = (title: string, body: string) =>
-      body.trim() ? `<section><h3>${title}</h3><div>${h(body)}</div></section>` : '';
-    const examplesHtml = examples.length ? `<section><h3>Примеры</h3>${examples.map(([i, o]) =>
-      `<table class="ex"><tr><th>Входные данные</th><th>Выходные данные</th></tr>
-       <tr><td><pre>${escapeHtml(i)}</pre></td><td><pre>${escapeHtml(o)}</pre></td></tr></table>`).join('')}</section>` : '';
-    const doc = `<!doctype html><html><head><meta charset="utf-8">
-      <title>${escapeHtml(form.name || 'statement')}</title>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
-      <style>
-        body{font-family:Georgia,'Times New Roman',serif;font-size:12pt;line-height:1.5;max-width:720px;margin:24px auto;color:#000;padding:0 16px}
-        h1{text-align:center;font-size:18pt;margin-bottom:4px}
-        h3{font-family:Arial,sans-serif;font-size:11pt;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #999;padding-bottom:3px;margin:14px 0 6px}
-        pre{font-family:'Courier New',monospace;font-size:10pt;background:#f5f5f5;border:1px solid #ccc;padding:6px;white-space:pre-wrap;margin:0}
-        table.ex{border-collapse:collapse;width:100%;margin:6px 0}
-        table.ex th{font-family:Arial,sans-serif;font-size:9pt;text-align:left;text-transform:uppercase;border:1px solid #ccc;padding:3px 6px;background:#f0f0f0}
-        table.ex td{border:1px solid #ccc;padding:0;vertical-align:top;width:50%}
-        @media print{body{margin:0}}
-      </style></head><body>
-      ${form.name ? `<h1>${escapeHtml(form.name)}</h1>` : ''}
-      ${form.legend.trim() ? `<div>${h(form.legend)}</div>` : ''}
-      ${sec('Входные данные', form.input)}
-      ${sec('Выходные данные', form.output)}
-      ${examplesHtml}
-      ${sec('Примечание', form.notes)}
-      ${sec('Scoring', form.scoring)}
-      <script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
-      </body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) { setError('Popup blocked — allow popups to export PDF'); return; }
-    w.document.open(); w.document.write(doc); w.document.close();
   }
 
   async function handleDeleteCurrent() {
@@ -314,7 +192,13 @@ export default function StatementTab({ problemId }: Props) {
         <div style={{ flex: 1 }} />
         {msg && <span style={{ color: '#2a7a2a', fontSize: 12 }}>✓ {msg}</span>}
         {error && <span style={{ color: '#c00', fontSize: 12 }}>✗ {error}</span>}
-        <button className="btn btn-sm" onClick={handleExportPdf} title="Open a print view to save as PDF">Export PDF</button>
+        <button className="btn btn-sm" onClick={handleCompile} disabled={compiling}
+          title="Compile the statement to PDF with the Polygon LaTeX templates">
+          {compiling ? <><span className="spinner" style={{ marginRight: 4 }} />Compiling…</> : 'Compile PDF'}
+        </button>
+        {pdfVersion > 0 && (
+          <a className="btn btn-sm" href={problems.statementPdfUrl(problemId, lang, true)} target="_blank" rel="noreferrer">Download PDF</a>
+        )}
         {stmts.find(s => s.language === lang) && (
           <button className="btn btn-sm btn-danger" onClick={handleDeleteCurrent}>Delete</button>
         )}
@@ -393,14 +277,40 @@ export default function StatementTab({ problemId }: Props) {
           </details>
         </div>
 
-        {/* Right: preview */}
-        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', background: '#fff' }}>
-          {/* Preview header */}
-          <div style={{ padding: '6px 20px', borderBottom: '1px solid #e8eaed', background: '#f6f8fa',
-            fontSize: 11, color: '#57606a', letterSpacing: '0.02em', textTransform: 'uppercase', fontWeight: 600 }}>
-            Предпросмотр
+        {/* Right: compiled PDF (Polygon LaTeX toolchain) */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--surface, #fff)' }}>
+          <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border, #e8eaed)', background: 'var(--surface-2, #f6f8fa)',
+            fontSize: 11, color: 'var(--muted, #57606a)', letterSpacing: '0.02em', textTransform: 'uppercase', fontWeight: 600,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>PDF (Polygon LaTeX)</span>
+            {compileLog && (
+              <button className="btn btn-sm" style={{ fontSize: 10, padding: '1px 6px' }} onClick={() => setShowLog(s => !s)}>
+                {showLog ? 'Hide log' : 'Show log'}
+              </button>
+            )}
           </div>
-          <StatementPreview form={debouncedForm} examples={examples} />
+
+          {showLog && compileLog && (
+            <pre style={{ margin: 0, padding: 10, maxHeight: 160, overflow: 'auto', fontSize: 11,
+              background: '#1e1e1e', color: '#e0a0a0', whiteSpace: 'pre-wrap' }}>{compileLog}</pre>
+          )}
+
+          <div style={{ flex: 1, minHeight: 480 }}>
+            {pdfVersion > 0 ? (
+              <iframe
+                title="statement-pdf"
+                src={`${problems.statementPdfUrl(problemId, lang)}&v=${pdfVersion}`}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+              />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted, #999)', fontSize: 13, padding: 20, textAlign: 'center' }}>
+                <div>Нажмите «Compile PDF», чтобы собрать условие через LaTeX-шаблоны Polygon.</div>
+                <button className="btn btn-primary" onClick={handleCompile} disabled={compiling}>
+                  {compiling ? 'Compiling…' : 'Compile PDF'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

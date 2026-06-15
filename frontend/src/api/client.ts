@@ -86,6 +86,10 @@ export const problems = {
   saveStatement: (data: Record<string, unknown>) => post<null>('problem.saveStatement', data),
   renderStatements: (problemId: number, lang: string) =>
     get<{ html: string; tutorialHtml: string }>('problem.renderStatements', { problemId, lang }),
+  compileStatement: (problemId: number, lang: string) =>
+    post<{ ok: boolean; log: string }>('problem.compileStatement', { problemId, lang }),
+  statementPdfUrl: (problemId: number, lang: string, download = false) =>
+    `${BASE}/problem.statementPdf?problemId=${problemId}&lang=${encodeURIComponent(lang)}${download ? '&download=true' : ''}`,
   files: (problemId: number) => get<{ resources: ProblemFile[]; executables: Executable[] }>('problem.files', { problemId }),
   saveFile: (data: Record<string, unknown>) => post<null>('problem.saveFile', data),
   viewFile: (problemId: number, path: string) => `${BASE}/problem.viewFile?problemId=${problemId}&path=${encodeURIComponent(path)}`,
