@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { contests, problems, Contest, ContestProblem, ProblemSummary } from '../api/client';
+import ShareManager from '../components/ShareManager';
 
 const LANGS = ['russian', 'english', 'ukrainian'];
 
@@ -95,6 +96,19 @@ export default function ContestPage() {
         <label style={{ fontSize: 12 }}>Language<br /><select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })} style={{ padding: '3px 6px' }}>{LANGS.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
         <button className="btn btn-primary btn-sm" onClick={saveFields}>Save</button>
       </div>
+
+      {/* Share access */}
+      {contest.isOwner && (
+        <div style={{ marginBottom: 16 }}>
+          <div className="section-header">Share access</div>
+          <ShareManager
+            note="Shared users get access to this contest and all of its problems. Removing a user revokes access to the contest and its problems."
+            load={() => contests.shares(contestId)}
+            add={(u) => contests.share(contestId, u)}
+            remove={(u) => contests.unshare(contestId, u)}
+          />
+        </div>
+      )}
 
       {/* Problems */}
       <div className="section-header">Problems ({probs.length})</div>

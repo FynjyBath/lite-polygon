@@ -17,8 +17,39 @@ export interface ContestProblemRow {
   revision: number;
 }
 
-export function listContests(ownerId: number): Contest[] {
-  return db.prepare('SELECT * FROM contests WHERE owner_id = ? ORDER BY id DESC').all(ownerId) as Contest[];
+export function listContests(ownerId: number): (Contest & { owner_username: string })[] {
+  return db.prepare(
+    `SELECT DISTINCT c.*, u.username AS owner_username
+       FROM contests c JOIN users u ON u.id = c.owner_id
+      WHERE c.owner_id = ?
+         OR c.id IN (SELECT contest_id FROM contest_shares WHERE user_id = ?)
+      ORDER BY c.id DESC`
+  ).all(ownerId, ownerId) as (Contest & { owner_username: string })[];
+}
+
+/** True if the user owns the contest or has been shared it. */
+export function canAccessContest(id: number, userId: number): boolean {
+  const row = db.prepare(
+    `SELECT 1 FROM contests c WHERE c.id = ? AND (
+        c.owner_id = ? OR EXISTS (SELECT 1 FROM contest_shares s WHERE s.contest_id = c.id AND s.user_id = ?)
+     ) LIMIT 1`
+  ).get(id, userId, userId);
+  return !!row;
+}
+
+export function shareContestWith(contestId: number, userId: number): void {
+  db.prepare('INSERT OR IGNORE INTO contest_shares (contest_id, user_id) VALUES (?, ?)').run(contestId, userId);
+}
+
+export function unshareContest(contestId: number, userId: number): void {
+  db.prepare('DELETE FROM contest_shares WHERE contest_id = ? AND user_id = ?').run(contestId, userId);
+}
+
+export function listContestShares(contestId: number): { id: number; username: string }[] {
+  return db.prepare(
+    `SELECT u.id, u.username FROM contest_shares s JOIN users u ON u.id = s.user_id
+      WHERE s.contest_id = ? ORDER BY u.username`
+  ).all(contestId) as { id: number; username: string }[];
 }
 
 export function getContest(id: number, ownerId?: number): Contest | undefined {

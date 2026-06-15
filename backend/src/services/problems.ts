@@ -92,6 +92,52 @@ export function getProblem(id: number, ownerId?: number): Problem | undefined {
   return db.prepare('SELECT * FROM problems WHERE id = ?').get(id) as Problem | undefined;
 }
 
+/**
+ * True if `userId` may access problem `id`: as the owner, via a direct share,
+ * or via a contest the user has been shared (a contest share grants access to
+ * all of its problems).
+ */
+export function canAccessProblem(id: number, userId: number): boolean {
+  const row = db.prepare(
+    `SELECT 1 FROM problems p WHERE p.id = ? AND (
+        p.owner_id = ?
+        OR EXISTS (SELECT 1 FROM problem_shares s WHERE s.problem_id = p.id AND s.user_id = ?)
+        OR EXISTS (SELECT 1 FROM contest_problems cp JOIN contest_shares cs ON cs.contest_id = cp.contest_id
+                   WHERE cp.problem_id = p.id AND cs.user_id = ?)
+     ) LIMIT 1`
+  ).get(id, userId, userId, userId);
+  return !!row;
+}
+
+/** Problems the user owns or has been shared (directly or via a contest). */
+export function listProblemsForUser(userId: number): (Problem & { owner_username: string })[] {
+  return db.prepare(
+    `SELECT DISTINCT p.*, u.username AS owner_username
+       FROM problems p JOIN users u ON u.id = p.owner_id
+      WHERE p.owner_id = ?
+         OR p.id IN (SELECT problem_id FROM problem_shares WHERE user_id = ?)
+         OR p.id IN (SELECT cp.problem_id FROM contest_problems cp
+                     JOIN contest_shares cs ON cs.contest_id = cp.contest_id WHERE cs.user_id = ?)
+      ORDER BY p.updated_at DESC`
+  ).all(userId, userId, userId) as (Problem & { owner_username: string })[];
+}
+
+export function shareProblemWith(problemId: number, userId: number): void {
+  db.prepare('INSERT OR IGNORE INTO problem_shares (problem_id, user_id) VALUES (?, ?)').run(problemId, userId);
+}
+
+export function unshareProblem(problemId: number, userId: number): void {
+  db.prepare('DELETE FROM problem_shares WHERE problem_id = ? AND user_id = ?').run(problemId, userId);
+}
+
+/** Usernames a problem is directly shared with (excludes the owner). */
+export function listProblemShares(problemId: number): { id: number; username: string }[] {
+  return db.prepare(
+    `SELECT u.id, u.username FROM problem_shares s JOIN users u ON u.id = s.user_id
+      WHERE s.problem_id = ? ORDER BY u.username`
+  ).all(problemId) as { id: number; username: string }[];
+}
+
 export function getProblemByName(shortName: string, ownerId: number): Problem | undefined {
   return db.prepare('SELECT * FROM problems WHERE short_name = ? AND owner_id = ?').get(shortName, ownerId) as Problem | undefined;
 }

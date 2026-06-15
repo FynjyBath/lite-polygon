@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { problems, polygon, ProblemSummary } from '../api/client';
+import { useAuth } from '../App';
+import ShareManager from '../components/ShareManager';
 
 export default function ProblemsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.username === 'admin';
   const [list, setList] = useState<ProblemSummary[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [cloningId, setCloningId] = useState<number | null>(null);
+  const [shareProb, setShareProb] = useState<ProblemSummary | null>(null);
   const [importMsg, setImportMsg] = useState('');
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -295,12 +300,35 @@ export default function ProblemsPage() {
                     title="Duplicate this problem">
                     {cloningId === p.id ? 'Cloning…' : 'Clone'}
                   </button>
-                  <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p)}>Delete</button>
+                  {(p.isOwner || isAdmin) && (
+                    <button className="btn btn-sm" onClick={() => setShareProb(p)} title="Manage access">Share</button>
+                  )}
+                  {(p.isOwner || isAdmin) && (
+                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p)}>Delete</button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {shareProb && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setShareProb(null); }}>
+          <div style={{ background: 'var(--surface,#fff)', borderRadius: 6, padding: 20, width: 420, maxWidth: '92vw' }}>
+            <div className="flex-between" style={{ marginBottom: 10 }}>
+              <strong>Share “{shareProb.shortName}”</strong>
+              <button className="btn btn-sm" onClick={() => setShareProb(null)}>Close</button>
+            </div>
+            <ShareManager
+              note="Shared users can open and edit this problem. You stay the owner."
+              load={() => problems.shares(shareProb.id)}
+              add={(u) => problems.share(shareProb.id, u)}
+              remove={(u) => problems.unshare(shareProb.id, u)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

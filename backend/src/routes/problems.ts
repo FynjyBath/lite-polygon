@@ -2,8 +2,10 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'fs';
 import path from 'path';
 import { getAuthUser } from './auth';
+import { findUserByUsername } from '../services/auth';
 import {
-  listProblems, listAllProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem, cloneProblem,
+  listAllProblems, getProblem, getProblemByName, createProblem, updateProblem, deleteProblem, cloneProblem,
+  canAccessProblem, listProblemsForUser, shareProblemWith, unshareProblem, listProblemShares,
   listSolutions, getSolution, getSolutionByPath, upsertSolution, deleteSolution,
   getAsset, upsertAsset, listFiles, upsertFile,
   getTestset, getOrCreateTestset, listTests, getTest, upsertTest, deleteTest as deleteTestDb,
@@ -48,12 +50,19 @@ function fail(comment: string, code = 400) {
 }
 
 function getProblemForUser(problemId: number, user: { id: number; username: string }, reply: FastifyReply) {
-  const problem = user.username === 'admin' ? getProblem(problemId) : getProblem(problemId, user.id);
-  if (!problem) {
+  const problem = getProblem(problemId);
+  if (!problem || (user.username !== 'admin' && !canAccessProblem(problemId, user.id))) {
     reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
     return null;
   }
   return problem;
+}
+
+// Only the owner (or admin) may manage a problem's shares.
+function canManageProblem(problemId: number, user: { id: number; username: string }): boolean {
+  if (user.username === 'admin') return true;
+  const p = getProblem(problemId);
+  return !!p && p.owner_id === user.id;
 }
 
 // In-memory progress for the answer-generation background job, keyed by problem.
@@ -66,11 +75,11 @@ function publicJob(j: AnswerGenJob) {
 
 export async function problemRoutes(app: FastifyInstance): Promise<void> {
 
-  // problems.list
+  // problems.list — owned + shared problems; the real owner is always shown
   app.get('/api/problems.list', async (req, reply) => {
     const user = await auth(req, reply);
     const isAdmin = user.username === 'admin';
-    const problems = isAdmin ? listAllProblems() : listProblems(user.id);
+    const problems = isAdmin ? listAllProblems() : listProblemsForUser(user.id);
     return ok(problems.map(p => ({
       id: p.id,
       shortName: p.short_name,
@@ -82,8 +91,47 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
       interactive: p.interactive === 1,
       modified: p.modified === 1,
       updatedAt: p.updated_at,
-      ...(isAdmin ? { ownerUsername: (p as unknown as { owner_username: string }).owner_username } : {}),
+      ownerUsername: (p as unknown as { owner_username: string }).owner_username,
+      isOwner: p.owner_id === user.id,
     })));
+  });
+
+  // problem.shares — list users a problem is shared with (owner/admin only)
+  app.get('/api/problem.shares', async (req, reply) => {
+    const user = await auth(req, reply);
+    const id = parseInt((req.query as { problemId?: string }).problemId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
+    if (!canManageProblem(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can manage sharing' });
+    return ok(listProblemShares(id));
+  });
+
+  // problem.share — grant another user access by username (owner/admin only)
+  app.post('/api/problem.share', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: number | string; username?: string };
+    const id = parseInt(String(body.problemId ?? ''));
+    const username = (body.username ?? '').trim();
+    if (!id || !username) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and username required' });
+    if (!canManageProblem(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can manage sharing' });
+    const target = findUserByUsername(username);
+    if (!target) return reply.code(404).send({ status: 'FAILED', comment: `User "${username}" not found` });
+    const owner = getProblem(id)!.owner_id;
+    if (target.id === owner) return reply.code(400).send({ status: 'FAILED', comment: 'That user already owns this problem' });
+    shareProblemWith(id, target.id);
+    return ok(listProblemShares(id));
+  });
+
+  // problem.unshare — revoke a user's access (owner/admin only)
+  app.post('/api/problem.unshare', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { problemId?: number | string; username?: string };
+    const id = parseInt(String(body.problemId ?? ''));
+    const username = (body.username ?? '').trim();
+    if (!id || !username) return reply.code(400).send({ status: 'FAILED', comment: 'problemId and username required' });
+    if (!canManageProblem(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can manage sharing' });
+    const target = findUserByUsername(username);
+    if (target) unshareProblem(id, target.id);
+    return ok(listProblemShares(id));
   });
 
   // problem.create
@@ -100,13 +148,14 @@ export async function problemRoutes(app: FastifyInstance): Promise<void> {
     return ok({ id: problem.id, name: problem.short_name });
   });
 
-  // problem.delete
+  // problem.delete — owner (or admin) only; shared collaborators cannot delete
   app.post('/api/problem.delete', async (req, reply) => {
     const user = await auth(req, reply);
     const { problemId } = req.body as { problemId?: string };
     const id = parseInt(problemId ?? '');
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'problemId required' });
-    if (!getProblemForUser(id, user, reply)) return;
+    if (!getProblem(id)) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found' });
+    if (!canManageProblem(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can delete this problem' });
     const problemDir = getProblemDir(id);
     deleteProblem(id);
     if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });

@@ -294,6 +294,20 @@ export function initSchema(dataDir?: string): void {
       idx INTEGER NOT NULL DEFAULT 0,
       UNIQUE(contest_id, problem_id)
     );
+
+    CREATE TABLE IF NOT EXISTS problem_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(problem_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS contest_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contest_id INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(contest_id, user_id)
+    );
   `);
 
   // Migrations for new columns (safe to run multiple times)

@@ -81,6 +81,9 @@ export const problems = {
   create: (name: string) => post<{ id: number; name: string }>('problem.create', { name }),
   delete: (problemId: number) => post<null>('problem.delete', { problemId }),
   clone: (problemId: number) => post<{ id: number; shortName: string }>('problem.clone', { problemId }),
+  shares: (problemId: number) => get<{ id: number; username: string }[]>('problem.shares', { problemId }),
+  share: (problemId: number, username: string) => post<{ id: number; username: string }[]>('problem.share', { problemId, username }),
+  unshare: (problemId: number, username: string) => post<{ id: number; username: string }[]>('problem.unshare', { problemId, username }),
   info: (problemId: number) => get<ProblemInfo>('problem.info', { problemId }),
   updateInfo: (data: Record<string, unknown>) => post<null>('problem.updateInfo', data),
   statements: (problemId: number) => get<Statement[]>('problem.statements', { problemId }),
@@ -200,7 +203,7 @@ export const polygon = {
     post<{ polygonProblemId: number }>('polygon.linkProblem', { problemId, polygonProblemId }),
 };
 
-export interface Contest { id: number; owner_id: number; name: string; location: string; date: string; language: string; created_at: string; }
+export interface Contest { id: number; owner_id: number; name: string; location: string; date: string; language: string; created_at: string; owner_username?: string; isOwner?: boolean; }
 export interface ContestProblem { problemId: number; index: string; shortName: string; revision: number; }
 
 export const contests = {
@@ -216,6 +219,9 @@ export const contests = {
   reorder: (contestId: number, problemIds: number[]) => post<ContestProblem[]>('contest.reorderProblems', { contestId, problemIds }),
   compile: (contestId: number, lang: string, kind: 'statements' | 'tutorials') =>
     post<{ ok: boolean; log: string }>('contest.compileStatements', { contestId, lang, kind }),
+  shares: (contestId: number) => get<{ id: number; username: string }[]>('contest.shares', { contestId }),
+  share: (contestId: number, username: string) => post<{ id: number; username: string }[]>('contest.share', { contestId, username }),
+  unshare: (contestId: number, username: string) => post<{ id: number; username: string }[]>('contest.unshare', { contestId, username }),
   pdfUrl: (contestId: number, lang: string, kind: 'statements' | 'tutorials', download = false) =>
     `${BASE}/contest.statementsPdf?contestId=${contestId}&lang=${encodeURIComponent(lang)}&kind=${kind}${download ? '&download=true' : ''}`,
 };
@@ -236,6 +242,7 @@ export interface ProblemSummary {
   modified: boolean;
   updatedAt: string;
   ownerUsername?: string;
+  isOwner?: boolean;
 }
 
 export interface ProblemInfo extends ProblemSummary {

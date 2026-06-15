@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { contests, Contest } from '../api/client';
+import { useAuth } from '../App';
 
 export default function ContestsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.username === 'admin';
   const [list, setList] = useState<Contest[]>([]);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -47,23 +50,26 @@ export default function ContestsPage() {
         {loading ? <div>Loading…</div> : (
           <table className="poly-table">
             <thead>
-              <tr><th style={{ width: 50 }}>#</th><th>Name</th><th style={{ width: 130 }}>Date</th><th style={{ width: 180 }}>Location</th><th style={{ width: 90 }}>Language</th><th style={{ width: 160 }}>Actions</th></tr>
+              <tr><th style={{ width: 50 }}>#</th><th>Name</th><th style={{ width: 110 }}>Owner</th><th style={{ width: 110 }}>Date</th><th style={{ width: 160 }}>Location</th><th style={{ width: 80 }}>Language</th><th style={{ width: 160 }}>Actions</th></tr>
             </thead>
             <tbody>
               {list.map(c => (
                 <tr key={c.id}>
                   <td>{c.id}</td>
                   <td><a className="poly-link" style={{ cursor: 'pointer' }} onClick={() => navigate(`/contest/${c.id}`)}>{c.name || '(unnamed)'}</a></td>
+                  <td style={{ color: '#555', fontSize: 12 }}>{c.owner_username}</td>
                   <td>{c.date}</td>
                   <td>{c.location}</td>
                   <td>{c.language}</td>
                   <td style={{ display: 'flex', gap: 4 }}>
                     <button className="btn btn-sm" onClick={() => navigate(`/contest/${c.id}`)}>Open</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c)}>Delete</button>
+                    {(isAdmin || c.owner_username === user?.username) && (
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c)}>Delete</button>
+                    )}
                   </td>
                 </tr>
               ))}
-              {list.length === 0 && <tr><td colSpan={6} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No contests yet</td></tr>}
+              {list.length === 0 && <tr><td colSpan={7} style={{ color: '#888', textAlign: 'center', padding: 12 }}>No contests yet</td></tr>}
             </tbody>
           </table>
         )}

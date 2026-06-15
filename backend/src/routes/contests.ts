@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'fs';
 import { getAuthUser } from './auth';
-import { getProblem } from '../services/problems';
 import {
   listContests, getContest, createContest, updateContest, deleteContest,
   listContestProblems, addContestProblem, removeContestProblem, reorderContestProblems,
-  indexToLetter, Contest,
+  indexToLetter, Contest, canAccessContest, shareContestWith, unshareContest, listContestShares,
 } from '../services/contests';
+import { canAccessProblem } from '../services/problems';
+import { findUserByUsername } from '../services/auth';
 import { compileContest, contestPdfPath } from '../services/tex';
 import { getContestDir } from '../db/schema';
 
@@ -18,9 +19,19 @@ async function auth(req: FastifyRequest, reply: FastifyReply) {
 function ok(result: unknown) { return { status: 'OK', result }; }
 
 function getContestForUser(id: number, user: { id: number; username: string }, reply: FastifyReply): Contest | null {
-  const contest = user.username === 'admin' ? getContest(id) : getContest(id, user.id);
-  if (!contest) { reply.code(404).send({ status: 'FAILED', comment: 'Contest not found or access denied' }); return null; }
+  const contest = getContest(id);
+  if (!contest || (user.username !== 'admin' && !canAccessContest(id, user.id))) {
+    reply.code(404).send({ status: 'FAILED', comment: 'Contest not found or access denied' });
+    return null;
+  }
   return contest;
+}
+
+// Only the owner (or admin) may manage a contest's shares.
+function canManageContest(id: number, user: { id: number; username: string }): boolean {
+  if (user.username === 'admin') return true;
+  const c = getContest(id);
+  return !!c && c.owner_id === user.id;
 }
 
 function problemsWithLetters(contestId: number) {
@@ -52,7 +63,7 @@ export async function contestRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'contestId required' });
     const contest = getContestForUser(id, user, reply);
     if (!contest) return;
-    return ok({ ...contest, problems: problemsWithLetters(id) });
+    return ok({ ...contest, problems: problemsWithLetters(id), isOwner: canManageContest(id, user) });
   });
 
   // contest.problems — ordered problems with letters
@@ -75,12 +86,13 @@ export async function contestRoutes(app: FastifyInstance): Promise<void> {
     return ok(null);
   });
 
-  // contest.delete
+  // contest.delete — owner (or admin) only
   app.post('/api/contest.delete', async (req, reply) => {
     const user = await auth(req, reply);
     const id = parseInt(String((req.body as { contestId?: number | string }).contestId ?? ''));
     if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'contestId required' });
-    if (!getContestForUser(id, user, reply)) return;
+    if (!getContest(id)) return reply.code(404).send({ status: 'FAILED', comment: 'Contest not found' });
+    if (!canManageContest(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can delete this contest' });
     deleteContest(id);
     const dir = getContestDir(id);
     if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
@@ -95,9 +107,10 @@ export async function contestRoutes(app: FastifyInstance): Promise<void> {
     const pid = parseInt(String(body.problemId ?? ''));
     if (!id || !pid) return reply.code(400).send({ status: 'FAILED', comment: 'contestId and problemId required' });
     if (!getContestForUser(id, user, reply)) return;
-    // Only allow adding problems the user can access.
-    const problem = user.username === 'admin' ? getProblem(pid) : getProblem(pid, user.id);
-    if (!problem) return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
+    // Only allow adding problems the user can access (owned or shared).
+    if (user.username !== 'admin' && !canAccessProblem(pid, user.id)) {
+      return reply.code(404).send({ status: 'FAILED', comment: 'Problem not found or access denied' });
+    }
     addContestProblem(id, pid);
     return ok(problemsWithLetters(id));
   });
@@ -161,5 +174,43 @@ export async function contestRoutes(app: FastifyInstance): Promise<void> {
     const fname = `${contest.name || 'contest'}-${k}-${language}.pdf`.replace(/[^\w.\- ]+/g, '_');
     reply.header('Content-Disposition', `${download === 'true' ? 'attachment' : 'inline'}; filename="${fname}"`);
     return reply.send(fs.createReadStream(pdf));
+  });
+
+  // contest.shares — list users the contest is shared with (owner/admin only)
+  app.get('/api/contest.shares', async (req, reply) => {
+    const user = await auth(req, reply);
+    const id = parseInt((req.query as { contestId?: string }).contestId ?? '');
+    if (!id) return reply.code(400).send({ status: 'FAILED', comment: 'contestId required' });
+    if (!canManageContest(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can manage sharing' });
+    return ok(listContestShares(id));
+  });
+
+  // contest.share — grant a user access to the contest AND all its problems
+  app.post('/api/contest.share', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { contestId?: number | string; username?: string };
+    const id = parseInt(String(body.contestId ?? ''));
+    const username = (body.username ?? '').trim();
+    if (!id || !username) return reply.code(400).send({ status: 'FAILED', comment: 'contestId and username required' });
+    if (!canManageContest(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can manage sharing' });
+    const target = findUserByUsername(username);
+    if (!target) return reply.code(404).send({ status: 'FAILED', comment: `User "${username}" not found` });
+    const contest = getContest(id)!;
+    if (target.id === contest.owner_id) return reply.code(400).send({ status: 'FAILED', comment: 'That user already owns this contest' });
+    shareContestWith(id, target.id);
+    return ok(listContestShares(id));
+  });
+
+  // contest.unshare — revoke a user's access to the contest and its problems
+  app.post('/api/contest.unshare', async (req, reply) => {
+    const user = await auth(req, reply);
+    const body = req.body as { contestId?: number | string; username?: string };
+    const id = parseInt(String(body.contestId ?? ''));
+    const username = (body.username ?? '').trim();
+    if (!id || !username) return reply.code(400).send({ status: 'FAILED', comment: 'contestId and username required' });
+    if (!canManageContest(id, user)) return reply.code(403).send({ status: 'FAILED', comment: 'Only the owner can manage sharing' });
+    const target = findUserByUsername(username);
+    if (target) unshareContest(id, target.id);
+    return ok(listContestShares(id));
   });
 }
