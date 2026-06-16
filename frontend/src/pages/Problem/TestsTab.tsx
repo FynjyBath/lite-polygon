@@ -216,9 +216,8 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
     }
   }
 
-  function handleCheckboxClick(e: React.MouseEvent<HTMLInputElement>, idx: number) {
+  function handleCheckboxClick(e: React.MouseEvent, idx: number) {
     if (e.shiftKey && lastClickedRef.current !== null) {
-      e.preventDefault();
       const from = Math.min(lastClickedRef.current, idx);
       const to = Math.max(lastClickedRef.current, idx);
       const rangeIdxs = tests.filter(t => t.idx >= from && t.idx <= to).map(t => t.idx);
@@ -541,12 +540,15 @@ export default function TestsAndGroupsTab({ problemId, info }: Props) {
                     opacity: dragIdx === t.idx ? 0.4 : 1,
                   }}
                 >
-                  <td style={{ textAlign: 'center' }}>
+                  <td
+                    style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                    onClick={(e) => handleCheckboxClick(e, t.idx)}
+                  >
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => {}}
-                      onClick={(e) => handleCheckboxClick(e as unknown as React.MouseEvent<HTMLInputElement>, t.idx)}
+                      readOnly
+                      style={{ pointerEvents: 'none' }}
                     />
                   </td>
                   <td style={{ textAlign: 'center', color: 'var(--muted)' }}>{t.idx}</td>
