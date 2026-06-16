@@ -75,6 +75,16 @@ export function getInterpreterCommand(sourceType: string): string | null {
   return null;
 }
 
+// GNU `time` lets us measure a child's actual CPU time and peak RSS via wait4
+// rusage, independent of host scheduling. Detected once; if absent we fall back
+// to wall-clock timing.
+const TIME_BIN: string | null = (() => {
+  for (const p of ['/usr/bin/time', '/bin/time']) {
+    try { if (fs.existsSync(p)) return p; } catch { /* ignore */ }
+  }
+  return null;
+})();
+
 interface SpawnResult {
   status: number | null;
   signal: NodeJS.Signals | null;
@@ -95,23 +105,38 @@ function spawnAsync(
     timeout?: number;
     maxOutputBytes?: number;
     memoryLimitKb?: number;
+    cpuLimitSec?: number;
+    rusageFile?: string;
   }
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
-    // Enforce an address-space cap so a runaway program cannot OOM the host,
-    // and lift the stack limit to the address-space limit. Competitive solutions
-    // routinely rely on deep recursion / large local arrays and expect the stack
-    // to be as large as the memory limit (as on Codeforces/Polygon); the default
-    // 8 MB soft stack limit would otherwise SIGSEGV them (a false RE). The stack
-    // can still never exceed the `ulimit -v` cap. Implemented via
-    // `sh -c 'ulimit -s unlimited; ulimit -v "$1"; shift; exec "$@"'` — the
-    // program and its args are passed as separate argv entries and run through
-    // `exec "$@"`, so there is no shell word-splitting or injection.
+    // Run the program through a small `sh` wrapper that sets resource limits and,
+    // when available, GNU `time` for accurate CPU-time/RSS accounting:
+    //   * `ulimit -s unlimited` — competitive solutions rely on deep recursion /
+    //     large local arrays and expect the stack to be as big as the memory
+    //     limit (as on Codeforces/Polygon); the default 8 MB soft stack would
+    //     otherwise SIGSEGV them (a false RE). Still bounded by `ulimit -v`.
+    //   * `ulimit -v` — address-space cap so a runaway program can't OOM the host.
+    //   * `ulimit -t` — CPU-second cap so a CPU-bound infinite loop is killed
+    //     promptly regardless of wall-clock contention.
+    //   * `time -o <file>` — records real CPU time and peak RSS.
+    // The program and its args are passed as separate argv entries run via
+    // `exec "$@"`, so there is no shell word-splitting or injection. Numeric
+    // limits are interpolated directly (we control them).
     let realCmd = cmd;
     let realArgs = args;
-    if (opts.memoryLimitKb && process.platform !== 'win32') {
+    const wantWrapper = process.platform !== 'win32' && (opts.memoryLimitKb || opts.rusageFile || opts.cpuLimitSec);
+    if (wantWrapper) {
+      const prelude: string[] = ['ulimit -s unlimited 2>/dev/null || true'];
+      if (opts.memoryLimitKb) prelude.push(`ulimit -v ${Math.floor(opts.memoryLimitKb)}`);
+      if (opts.cpuLimitSec) prelude.push(`ulimit -t ${Math.ceil(opts.cpuLimitSec)}`);
       realCmd = '/bin/sh';
-      realArgs = ['-c', 'ulimit -s unlimited 2>/dev/null || true; ulimit -v "$1"; shift; exec "$@"', 'memwrap', String(opts.memoryLimitKb), cmd, ...args];
+      if (opts.rusageFile && TIME_BIN) {
+        // First positional ($1) is the rusage output path; the rest is the program.
+        realArgs = ['-c', `${prelude.join('; ')}; rf="$1"; shift; exec ${TIME_BIN} -q -f '%U %S %M' -o "$rf" "$@"`, 'runwrap', opts.rusageFile, cmd, ...args];
+      } else {
+        realArgs = ['-c', `${prelude.join('; ')}; exec "$@"`, 'runwrap', cmd, ...args];
+      }
     }
 
     let proc: ReturnType<typeof spawn>;
@@ -253,17 +278,53 @@ export async function runBinary(binaryPath: string, options: RunOptions): Promis
     ? Math.floor(Math.max(memoryLimitBytes * 4, 512 * 1024 * 1024) / 1024)
     : undefined;
 
+  // Kernel CPU-second cap (grace over the limit so a valid borderline solution
+  // is never cut short by whole-second rounding; the verdict is decided by the
+  // measured CPU time below). The generous wall-clock timeout is only a backstop
+  // for processes that block/sleep (which burn no CPU).
+  const cpuLimitSec = Math.ceil(timeLimitMs / 1000) + 2;
+  const wallTimeoutMs = timeLimitMs * 4 + 5000;
+  const rusageFile = TIME_BIN
+    ? path.join(os.tmpdir(), `rusage_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2)}`)
+    : undefined;
+
   const result = await spawnAsync(binaryPath, args, {
     input: inputData,
     inputFile: useInputFile ? stdinFile : undefined,
-    timeout: timeLimitMs + 1000,
+    timeout: wallTimeoutMs,
     cwd: cwd || path.dirname(binaryPath),
     env: safeEnv(env),
     maxOutputBytes: 64 * 1024 * 1024,
     memoryLimitKb,
+    cpuLimitSec,
+    rusageFile,
   });
 
-  const timeMs = Date.now() - startTime;
+  const wallMs = Date.now() - startTime;
+
+  // Read the CPU time / peak RSS recorded by GNU `time`. The file is present
+  // whenever `time` itself survived (including when the program died by signal
+  // or hit the CPU cap); it is absent only if the whole wrapper was SIGKILLed
+  // by our wall-clock backstop, in which case we fall back to wall-clock time.
+  let cpuMs: number | null = null;
+  let memoryBytes = 0;
+  if (rusageFile) {
+    try {
+      const raw = fs.readFileSync(rusageFile, 'utf-8').trim();
+      if (raw) {
+        const [u, s, m] = raw.split(/\s+/);
+        const user = parseFloat(u), sys = parseFloat(s), maxRssKb = parseFloat(m);
+        if (Number.isFinite(user) && Number.isFinite(sys)) cpuMs = Math.round((user + sys) * 1000);
+        if (Number.isFinite(maxRssKb)) memoryBytes = Math.round(maxRssKb * 1024);
+      }
+    } catch { /* missing/unreadable — fall back to wall-clock */ }
+    try { fs.unlinkSync(rusageFile); } catch { /* ignore */ }
+  }
+
+  // Reported execution time: CPU time when available (unaffected by parallel
+  // scheduling/contention), else wall-clock.
+  const timeMs = cpuMs ?? wallMs;
+  const overTime = cpuMs !== null ? cpuMs >= timeLimitMs : wallMs >= timeLimitMs;
 
   let stdout = '';
   let stderr = '';
@@ -277,23 +338,34 @@ export async function runBinary(binaryPath: string, options: RunOptions): Promis
     fs.writeFileSync(stdoutFile, result.stdout);
   }
 
-  if (result.timedOut || timeMs >= timeLimitMs) {
-    return { verdict: 'TLE', exitCode: -1, timeMs, memoryBytes: 0, stdout, stderr };
+  // Wall-clock backstop fired (a blocked/sleeping or hopelessly slow process).
+  if (result.timedOut) {
+    return { verdict: 'TLE', exitCode: -1, timeMs: Math.max(timeMs, timeLimitMs), memoryBytes, stdout, stderr };
   }
 
   if (result.error) {
     if (result.error.message.includes('ETIMEDOUT') || result.error.message.includes('timeout')) {
-      return { verdict: 'TLE', exitCode: -1, timeMs, memoryBytes: 0, stdout, stderr };
+      return { verdict: 'TLE', exitCode: -1, timeMs: Math.max(timeMs, timeLimitMs), memoryBytes, stdout, stderr };
     }
-    return { verdict: 'CRASHED', exitCode: -1, timeMs, memoryBytes: 0, stdout, stderr };
+    return { verdict: 'CRASHED', exitCode: -1, timeMs, memoryBytes, stdout, stderr };
+  }
+
+  // CPU time over the limit (or the kernel CPU cap killed it) → TLE.
+  if (overTime) {
+    return { verdict: 'TLE', exitCode: -1, timeMs: Math.max(timeMs, timeLimitMs), memoryBytes, stdout, stderr };
+  }
+
+  // Peak RSS over the configured memory limit → MLE.
+  if (memoryLimitBytes && memoryBytes > memoryLimitBytes) {
+    return { verdict: 'MLE', exitCode: result.status ?? -1, timeMs, memoryBytes, stdout, stderr };
   }
 
   const exitCode = result.status ?? -1;
   if (exitCode !== 0) {
-    return { verdict: 'RE', exitCode, timeMs, memoryBytes: 0, stdout, stderr };
+    return { verdict: 'RE', exitCode, timeMs, memoryBytes, stdout, stderr };
   }
 
-  return { verdict: 'OK', exitCode: 0, timeMs, memoryBytes: 0, stdout, stderr };
+  return { verdict: 'OK', exitCode: 0, timeMs, memoryBytes, stdout, stderr };
 }
 
 export async function runChecker(

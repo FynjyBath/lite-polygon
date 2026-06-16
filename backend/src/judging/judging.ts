@@ -312,14 +312,15 @@ export async function runInvocation(
       }
     }
 
-    await runPool(runPairs, PARALLEL_WORKERS, async ({ solId, binary, test: t }) => {
+    // Judge a single (solution, test) pair: run it, then check its output.
+    type RunOutcome = { verdict: string; timeMs: number; memoryBytes: number; exitCode: number; stderr: string; stdout: string };
+    const judgePair = async ({ solId, binary, test: t }: RunPair): Promise<RunOutcome> => {
       const testNum = String(t.idx).padStart(2, '0');
       const inputFile  = path.join(problemDir, testset.input_path_pattern.replace('%02d', testNum));
       const answerFile = path.join(problemDir, testset.answer_path_pattern.replace('%02d', testNum));
 
       if (!fs.existsSync(inputFile)) {
-        db.prepare(INSERT_RUN).run(invocationId, solId, t.idx, 'SKIPPED', 0, 0, 0, 'Input file missing', '', 0);
-        return;
+        return { verdict: 'SKIPPED', timeMs: 0, memoryBytes: 0, exitCode: 0, stderr: 'Input file missing', stdout: '' };
       }
 
       const outputFile = path.join(problemDir, 'workdir', `inv_${invocationId}_sol_${solId}_test_${t.idx}.out`);
@@ -352,21 +353,45 @@ export async function runInvocation(
         }
       }
 
-      if (verdict === 'TLE') {
-        verdict = runResult.timeMs < timeLimitMs ? 'RE' : 'TL';
-      }
+      if (verdict === 'TLE') verdict = 'TL';
+      else if (verdict === 'MLE') verdict = 'ML';
 
-      db.prepare(INSERT_RUN).run(
-        invocationId, solId, t.idx,
+      return {
         verdict,
-        runResult.timeMs,
-        0,
-        runResult.exitCode,
-        (runResult.stderr + '\n' + checkerComment).trim().slice(0, 500),
-        runResult.stdout.slice(0, 200),
-        0
+        timeMs: runResult.timeMs,
+        memoryBytes: runResult.memoryBytes,
+        exitCode: runResult.exitCode,
+        stderr: (runResult.stderr + '\n' + checkerComment).trim().slice(0, 500),
+        stdout: runResult.stdout.slice(0, 200),
+      };
+    };
+
+    const tlToRecheck: RunPair[] = [];
+    await runPool(runPairs, PARALLEL_WORKERS, async (pair) => {
+      const r = await judgePair(pair);
+      db.prepare(INSERT_RUN).run(
+        invocationId, pair.solId, pair.test.idx,
+        r.verdict, r.timeMs, r.memoryBytes, r.exitCode, r.stderr, r.stdout, 0
       );
+      if (r.verdict === 'TL') tlToRecheck.push(pair);
     });
+
+    // Re-judge TL verdicts in isolation. Running tests in parallel lets them
+    // contend for CPU and (for memory-heavy solutions) memory bandwidth, which
+    // inflates even measured CPU time — so a borderline-but-valid solution can
+    // show a false TL. Re-run those few sequentially with nothing else running
+    // and, to absorb run-to-run timing noise near the limit, take the best
+    // (fastest) of two isolated runs — as real judges do.
+    for (const pair of tlToRecheck) {
+      let best = await judgePair(pair);
+      if (best.verdict === 'TL') {
+        const second = await judgePair(pair);
+        if (second.timeMs < best.timeMs) best = second;
+      }
+      db.prepare(
+        'UPDATE invocation_runs SET verdict=?, time_ms=?, memory_bytes=?, exit_code=?, stderr_preview=?, stdout_preview=? WHERE invocation_id=? AND solution_id=? AND test_idx=?'
+      ).run(best.verdict, best.timeMs, best.memoryBytes, best.exitCode, best.stderr, best.stdout, invocationId, pair.solId, pair.test.idx);
+    }
 
     // Phase 5: award points per (solution, test) based on the group policies.
     //  - EACH_TEST group / ungrouped test: a passing (OK) test scores its points.
