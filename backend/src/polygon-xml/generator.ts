@@ -122,20 +122,19 @@ export function generateProblemXml(model: ProblemXmlModel): string {
   }
 
   lines.push('</problem>');
-  return lines.join('\n');
+  return lines.join('\n') + '\n';
 }
 
 function generateJudging(j: JudgingModel): string {
   const lines: string[] = [];
-  const ja: Record<string, string | undefined> = {
-    'cpu-name': j.cpuName,
-    'cpu-speed': j.cpuSpeed,
-    'input-file': j.inputFile,
-    'output-file': j.outputFile,
-    'run-count': String(j.runCount),
-  };
+  // cpu-name/cpu-speed are dropped when empty, but input-file/output-file are
+  // always emitted (even empty) and run-count is always present, matching
+  // Polygon's exact attribute set and order.
+  const head = attrs({ 'cpu-name': j.cpuName, 'cpu-speed': j.cpuSpeed })
+    + ` input-file="${esc(j.inputFile ?? '')}" output-file="${esc(j.outputFile ?? '')}"`
+    + ` run-count="${esc(String(j.runCount))}"`;
   const jExtra = j._extraAttrs ? extraAttrs(j._extraAttrs) : '';
-  lines.push(`    <judging${attrs(ja)}${jExtra}>`);
+  lines.push(`    <judging${head}${jExtra}>`);
   for (const ts of j.testsets) {
     lines.push(generateTestset(ts));
   }
@@ -151,11 +150,13 @@ function generateTestset(ts: TestsetModel): string {
   lines.push(`            <test-count>${ts.testCount}</test-count>`);
   lines.push(`            <input-path-pattern>${esc(ts.inputPathPattern)}</input-path-pattern>`);
   lines.push(`            <answer-path-pattern>${esc(ts.answerPathPattern)}</answer-path-pattern>`);
-  lines.push('            <tests>');
-  for (const t of ts.tests) {
-    lines.push(generateTest(t));
+  if (ts.tests.length === 0) {
+    lines.push('            <tests/>');
+  } else {
+    lines.push('            <tests>');
+    for (const t of ts.tests) lines.push(generateTest(t));
+    lines.push('            </tests>');
   }
-  lines.push('            </tests>');
   if (ts.groups.length > 0) {
     lines.push('            <groups>');
     for (const g of ts.groups) {
@@ -271,15 +272,16 @@ function generateChecker(c: CheckerModel): string {
     lines.push(`                <input-path-pattern>${esc(ts.inputPathPattern)}</input-path-pattern>`);
     lines.push(`                <output-path-pattern>${esc(ts.outputPathPattern)}</output-path-pattern>`);
     lines.push(`                <answer-path-pattern>${esc(ts.answerPathPattern)}</answer-path-pattern>`);
-    lines.push('                <tests>');
-    for (const t of ts.tests) {
-      if (t.verdict) {
-        lines.push(`                    <test${attrs({ verdict: t.verdict })}/>`);
-      } else {
-        lines.push('                    <test/>');
+    if (ts.tests.length === 0) {
+      lines.push('                <tests/>');
+    } else {
+      lines.push('                <tests>');
+      for (const t of ts.tests) {
+        if (t.verdict) lines.push(`                    <test${attrs({ verdict: t.verdict })}/>`);
+        else lines.push('                    <test/>');
       }
+      lines.push('                </tests>');
     }
-    lines.push('                </tests>');
     lines.push('            </testset>');
   }
   lines.push('        </checker>');
@@ -296,16 +298,15 @@ function generateValidator(v: ValidatorModel): string {
     lines.push('                <testset>');
     lines.push(`                    <test-count>${ts.testCount}</test-count>`);
     lines.push(`                    <input-path-pattern>${esc(ts.inputPathPattern)}</input-path-pattern>`);
-    lines.push('                    <tests>');
-    for (const t of ts.tests) {
-      const ta: Record<string, string | undefined> = {
-        group: t.group,
-        testset: t.testset,
-        verdict: t.verdict,
-      };
-      lines.push(`                        <test${attrs(ta)}/>`);
+    if (ts.tests.length === 0) {
+      lines.push('                    <tests/>');
+    } else {
+      lines.push('                    <tests>');
+      for (const t of ts.tests) {
+        lines.push(`                        <test${attrs({ group: t.group, testset: t.testset, verdict: t.verdict })}/>`);
+      }
+      lines.push('                    </tests>');
     }
-    lines.push('                    </tests>');
     lines.push('                </testset>');
   }
   lines.push('            </validator>');
@@ -340,9 +341,7 @@ function generateStresses(s: StressesModel): string {
   lines.push('    <stresses>');
   lines.push(`        <stress-count>${s.stressCount}</stress-count>`);
   lines.push(`        <stress-path-pattern>${esc(s.stressPathPattern)}</stress-path-pattern>`);
-  lines.push('        <list>');
-  // TODO: serialize stress entries
-  lines.push('        </list>');
+  lines.push('        <list/>');
   lines.push('    </stresses>');
   return lines.join('\n');
 }

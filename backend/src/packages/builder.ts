@@ -6,10 +6,11 @@ import {
   getProblem, getAsset, listSolutions, getTestset, listTests,
   listFiles, listExecutables, listTags, listStatements, getProblemNames,
   listProperties, getTestGroups, getGroupDependencies,
+  listCheckerTests, listValidatorTests,
 } from '../services/problems';
 import { generateProblemXml } from '../polygon-xml/generator';
 import { compileAsset, compileSolution, generateTestInput, generateTestAnswer } from '../judging/judging';
-import type { ProblemXmlModel } from '../polygon-xml/types';
+import type { ProblemXmlModel, StatementEntry, TutorialEntry } from '../polygon-xml/types';
 
 export type PackageType = 'standard' | 'linux' | 'windows';
 
@@ -59,44 +60,20 @@ async function assemblePackage(
   if (!problem) throw new Error('Problem is null');
   const problemDir = getProblemDir(problemId);
 
-  // Copy all problem files to destDir
+  // Copy all problem files to destDir (the top-level tests/ dir is skipped here
+  // and rebuilt below from the current test list).
   copyAllFiles(problemDir, destDir, type);
 
-  // For linux/windows packages, generate all tests
-  const testset = getTestset(problemId, 'tests');
-  if (testset && (type === 'linux' || type === 'windows')) {
-    const tests = listTests(testset.id);
-    const inputPattern = testset.input_path_pattern;
-    const answerPattern = testset.answer_path_pattern;
-    const timeLimitMs = testset.time_limit ?? problem.time_limit;
-    const memLimitBytes = testset.memory_limit ?? problem.memory_limit;
+  // Materialize exactly the tests that currently exist (idx 1..N), so no stale
+  // files from deleted/renumbered tests get included. Per Polygon's conventions:
+  //   • standard           — only manual tests' inputs (generated ones are
+  //                            re-created on the target from the scripts);
+  //   • linux / windows     — every test's input and answer (generated as needed).
+  await materializeTests(problemId, destDir, type, problem);
 
-    for (const t of tests) {
-      const testNum = String(t.idx).padStart(2, '0');
-      const inputDest = path.join(destDir, inputPattern.replace('%02d', testNum));
-      const answerDest = path.join(destDir, answerPattern.replace('%02d', testNum));
-
-      // Input
-      if (!fs.existsSync(inputDest)) {
-        if (t.method === 'generated' && t.cmd) {
-          const genResult = await generateTestInput(problemId, testset.id, t.idx);
-          if (genResult.success) {
-            fs.mkdirSync(path.dirname(inputDest), { recursive: true });
-            fs.copyFileSync(genResult.inputPath, inputDest);
-          }
-        }
-      }
-
-      // Answer
-      if (!fs.existsSync(answerDest) && fs.existsSync(inputDest)) {
-        const genAns = await generateTestAnswer(problemId, inputDest, timeLimitMs, memLimitBytes);
-        if (genAns.success) {
-          fs.mkdirSync(path.dirname(answerDest), { recursive: true });
-          fs.copyFileSync(genAns.answerPath, answerDest);
-        }
-      }
-    }
-  }
+  // Write validator/checker test inputs referenced by problem.xml, in case they
+  // are not already present on disk (e.g. locally authored problems).
+  writeValidatorAndCheckerTests(problemId, destDir);
 
   // Generate problem.xml
   const model = buildProblemXmlModel(problemId, problem, type);
@@ -109,24 +86,20 @@ async function assemblePackage(
     fs.writeFileSync(path.join(destDir, 'tags'), tags.join('\n') + '\n', 'utf-8');
   }
 
-  // For standard/linux: compile checker to local binary
+  // The checker's `<copy>` (e.g. check.cpp at the root) is a copy of the checker
+  // *source* and is taken verbatim from disk by copyAllFiles. Ensure it is
+  // present even if it was never materialized on disk.
   const checker = getAsset(problemId, 'checker');
-  if (checker && checker.source_path) {
-    const compileResult = await compileAsset(problemId, 'checker');
-    if (compileResult.success) {
-      const updatedChecker = getAsset(problemId, 'checker')!;
-      if (updatedChecker.compiled_binary && fs.existsSync(updatedChecker.compiled_binary)) {
-        const copyDest = checker.copy_path ? path.join(destDir, checker.copy_path) : path.join(destDir, 'check');
-        fs.mkdirSync(path.dirname(copyDest), { recursive: true });
-        if (type === 'linux') {
-          fs.copyFileSync(updatedChecker.compiled_binary, copyDest);
-        }
-      }
+  if (checker && checker.copy_path && checker.source_path) {
+    const copyDest = path.join(destDir, checker.copy_path);
+    const srcOnDisk = path.join(problemDir, checker.source_path);
+    if (!fs.existsSync(copyDest) && fs.existsSync(srcOnDisk)) {
+      fs.mkdirSync(path.dirname(copyDest), { recursive: true });
+      fs.copyFileSync(srcOnDisk, copyDest);
     }
   }
 
-  // Generate scripts if they don't exist
-  generateScripts(destDir, problemId);
+  ensureScriptsDir(destDir);
 }
 
 function copyAllFiles(sourceDir: string, destDir: string, type: PackageType): void {
@@ -138,8 +111,11 @@ function copyAllFiles(sourceDir: string, destDir: string, type: PackageType): vo
   function copyRec(src: string, dst: string, relPath: string): void {
     const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      // Skip workdir
+      // Skip the volatile workdir and the top-level tests/ directory — the
+      // latter is materialized explicitly from the current test list so stale
+      // files from deleted/renumbered tests never leak into the package.
       if (path.basename(src) === 'workdir') return;
+      if (relPath === 'tests') return;
       fs.mkdirSync(dst, { recursive: true });
       for (const e of fs.readdirSync(src)) {
         copyRec(path.join(src, e), path.join(dst, e), relPath ? `${relPath}/${e}` : e);
@@ -147,6 +123,9 @@ function copyAllFiles(sourceDir: string, destDir: string, type: PackageType): vo
     } else {
       const ext = path.extname(src).toLowerCase();
       if (type === 'linux' && skipForLinux.has(ext)) return;
+      // Polygon omits empty statement section files (e.g. an unused scoring.tex
+      // / interaction.tex); skip them so the package matches.
+      if (relPath.startsWith('statement-sections/') && ext === '.tex' && stat.size === 0) return;
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       fs.copyFileSync(src, dst);
     }
@@ -155,25 +134,87 @@ function copyAllFiles(sourceDir: string, destDir: string, type: PackageType): vo
   copyRec(sourceDir, destDir, '');
 }
 
-function generateScripts(destDir: string, problemId: number): void {
-  const scriptsDir = path.join(destDir, 'scripts');
-  fs.mkdirSync(scriptsDir, { recursive: true });
+// Rebuild the package's tests/ directory from the current test list only, so it
+// contains exactly tests 1..N and nothing stale.
+async function materializeTests(
+  problemId: number,
+  destDir: string,
+  type: PackageType,
+  problem: NonNullable<ReturnType<typeof getProblem>>,
+): Promise<void> {
+  const testset = getTestset(problemId, 'tests');
+  if (!testset) return;
+  const tests = listTests(testset.id);
+  const problemDir = getProblemDir(problemId);
+  const inputPattern = testset.input_path_pattern;
+  const answerPattern = testset.answer_path_pattern;
+  const timeLimitMs = testset.time_limit ?? problem.time_limit;
+  const memLimitBytes = testset.memory_limit ?? problem.memory_limit;
 
-  const scriptNames = [
-    'gen-input-via-stdout', 'gen-input-via-file', 'gen-input-via-files',
-    'gen-answer', 'run-checker-tests', 'run-validator-tests',
-  ];
+  for (const t of tests) {
+    const testNum = String(t.idx).padStart(2, '0');
+    const srcInput = path.join(problemDir, inputPattern.replace('%02d', testNum));
+    const srcAnswer = path.join(problemDir, answerPattern.replace('%02d', testNum));
+    const dstInput = path.join(destDir, inputPattern.replace('%02d', testNum));
+    const dstAnswer = path.join(destDir, answerPattern.replace('%02d', testNum));
+    fs.mkdirSync(path.dirname(dstInput), { recursive: true });
 
-  for (const name of scriptNames) {
-    const sh = path.join(scriptsDir, `${name}.sh`);
-    const bat = path.join(scriptsDir, `${name}.bat`);
-    if (!fs.existsSync(sh)) {
-      fs.writeFileSync(sh, `#!/bin/bash\n# ${name}\n`, 'utf-8');
+    if (type === 'standard') {
+      // Standard packages ship only manual inputs; generated tests (and all
+      // answers) are reproduced on the target via the scripts.
+      if (t.method !== 'generated' && fs.existsSync(srcInput)) fs.copyFileSync(srcInput, dstInput);
+      continue;
     }
-    if (!fs.existsSync(bat)) {
-      fs.writeFileSync(bat, `@echo off\nREM ${name}\n`, 'utf-8');
+
+    // Full packages: ship every input and answer, generating any that are missing.
+    if (fs.existsSync(srcInput)) {
+      fs.copyFileSync(srcInput, dstInput);
+    } else if (t.method === 'generated' && t.cmd) {
+      const gen = await generateTestInput(problemId, testset.id, t.idx);
+      if (gen.success) fs.copyFileSync(gen.inputPath, dstInput);
+    }
+    if (fs.existsSync(dstInput)) {
+      if (fs.existsSync(srcAnswer)) {
+        fs.copyFileSync(srcAnswer, dstAnswer);
+      } else {
+        const ans = await generateTestAnswer(problemId, dstInput, timeLimitMs, memLimitBytes);
+        if (ans.success) fs.copyFileSync(ans.answerPath, dstAnswer);
+      }
     }
   }
+}
+
+// Ensure the validator/checker test inputs referenced by problem.xml exist on
+// disk. They are normally copied from the problem dir; write them from the DB
+// only when missing (e.g. locally authored problems).
+function writeValidatorAndCheckerTests(problemId: number, destDir: string): void {
+  const vts = listValidatorTests(problemId, 0);
+  if (vts.length > 0) {
+    const dir = path.join(destDir, 'files', 'tests', 'validator-tests');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const vt of vts) {
+      const p = path.join(dir, String(vt.idx).padStart(2, '0'));
+      if (!fs.existsSync(p)) fs.writeFileSync(p, vt.input ?? '', 'utf-8');
+    }
+  }
+  const cts = listCheckerTests(problemId);
+  if (cts.length > 0) {
+    const dir = path.join(destDir, 'files', 'tests', 'checker-tests');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const ct of cts) {
+      const base = path.join(dir, String(ct.idx).padStart(2, '0'));
+      if (!fs.existsSync(base)) fs.writeFileSync(base, ct.input ?? '', 'utf-8');
+      if (ct.output_data && !fs.existsSync(base + '.o')) fs.writeFileSync(base + '.o', ct.output_data, 'utf-8');
+      if (ct.answer && !fs.existsSync(base + '.a')) fs.writeFileSync(base + '.a', ct.answer, 'utf-8');
+    }
+  }
+}
+
+// Ensure the (conventional) scripts/ directory exists. Polygon's real helper
+// scripts are kept as-is when present on disk; we never fabricate stub scripts
+// (they are not part of a valid package and just add noise).
+function ensureScriptsDir(destDir: string): void {
+  fs.mkdirSync(path.join(destDir, 'scripts'), { recursive: true });
 }
 
 function buildProblemXmlModel(
@@ -230,6 +271,9 @@ function buildProblemXmlModel(
   const validator = getAsset(problemId, 'validator');
   const interactor = getAsset(problemId, 'interactor');
 
+  const checkerTests = listCheckerTests(problemId);
+  const validatorTests = listValidatorTests(problemId, 0);
+
   const binaryExt = type === 'windows' ? '.exe' : '';
   const binaryType = type === 'windows' ? 'exe.win32' : '';
 
@@ -250,24 +294,31 @@ function buildProblemXmlModel(
     binary: e.binary_path ? { path: e.binary_path, type: e.binary_type } : undefined,
   }));
 
-  // Build statements list
+  // Build statements/tutorials lists. Each is emitted as tex, then html and pdf
+  // only when those rendered files actually exist on disk (so the package never
+  // references a missing file). Order matches Polygon: tex, html, pdf.
+  const problemDirForXml = getProblemDir(problemId);
+  const exists = (rel: string) => fs.existsSync(path.join(problemDirForXml, rel));
+
   const statements = stmts.flatMap(s => {
-    const texPath = `statements/${s.language}/problem.tex`;
+    const entries: StatementEntry[] = [];
+    entries.push({ language: s.language, path: `statements/${s.language}/problem.tex`, type: 'application/x-tex', charset: 'UTF-8', mathjax: 'true' });
     const htmlPath = `statements/.html/${s.language}/problem.html`;
+    if (exists(htmlPath)) entries.push({ language: s.language, path: htmlPath, type: 'text/html', charset: 'UTF-8', mathjax: 'true' });
     const pdfPath = `statements/.pdf/${s.language}/problem.pdf`;
-    const entries = [];
-    entries.push({ language: s.language, path: texPath, type: 'application/x-tex', charset: 'UTF-8', mathjax: 'true' });
-    entries.push({ language: s.language, path: pdfPath, type: 'application/pdf' });
+    if (exists(pdfPath)) entries.push({ language: s.language, path: pdfPath, type: 'application/pdf' });
     return entries;
   });
 
   const tutorials = stmts.flatMap(s => {
+    const entries: TutorialEntry[] = [];
     const texPath = `statements/${s.language}/tutorial.tex`;
+    if (exists(texPath)) entries.push({ language: s.language, path: texPath, type: 'application/x-tex', charset: 'UTF-8', mathjax: 'true' });
+    const htmlPath = `statements/.html/${s.language}/tutorial.html`;
+    if (exists(htmlPath)) entries.push({ language: s.language, path: htmlPath, type: 'text/html', charset: 'UTF-8', mathjax: 'true' });
     const pdfPath = `statements/.pdf/${s.language}/tutorial.pdf`;
-    return [
-      { language: s.language, path: texPath, type: 'application/x-tex', charset: 'UTF-8', mathjax: 'true' },
-      { language: s.language, path: pdfPath, type: 'application/pdf' },
-    ];
+    if (exists(pdfPath)) entries.push({ language: s.language, path: pdfPath, type: 'application/pdf' });
+    return entries;
   });
 
   return {
@@ -277,6 +328,9 @@ function buildProblemXmlModel(
     names,
     statements,
     tutorials,
+    // Polygon always tags these container elements; mirror it for a faithful format.
+    ...(statements.length > 0 ? { _statementsEl: { 'latex-pdf-mode': 'obsolete' } } : {}),
+    ...(tutorials.length > 0 ? { _tutorialsEl: { 'latex-pdf-mode': 'obsolete' } } : {}),
     judging: {
       inputFile: problem.input_file,
       outputFile: problem.output_file,
@@ -294,20 +348,20 @@ function buildProblemXmlModel(
         binary: checker.binary_path ? { path: checker.binary_path, type: checker.binary_type } : undefined,
         copy: checker.copy_path ? { path: checker.copy_path, type: checker.copy_type || undefined } : undefined,
         testset: {
-          testCount: 0,
+          testCount: checkerTests.length,
           inputPathPattern: 'files/tests/checker-tests/%02d',
           outputPathPattern: 'files/tests/checker-tests/%02d.o',
           answerPathPattern: 'files/tests/checker-tests/%02d.a',
-          tests: [],
+          tests: checkerTests.map(ct => ({ verdict: ct.expected_verdict || undefined })),
         },
       } : undefined,
       validators: validator ? [{
         source: validator.source_path ? { path: validator.source_path, type: validator.source_type } : undefined,
         binary: validator.binary_path ? { path: validator.binary_path, type: validator.binary_type } : undefined,
         testset: {
-          testCount: 0,
+          testCount: validatorTests.length,
           inputPathPattern: 'files/tests/validator-tests/%02d',
-          tests: [],
+          tests: validatorTests.map(vt => ({ verdict: vt.expected_verdict || undefined })),
         },
       }] : [],
       interactor: interactor ? {
@@ -334,11 +388,14 @@ function createZipFromDir(sourceDir: string, outputPath: string): void {
   const zip = new AdmZip();
 
   function addDir(dirPath: string, zipPath: string): void {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
       const zipEntry = zipPath ? `${zipPath}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
+        // Emit an explicit directory entry (as Polygon packages do) before its
+        // contents.
+        zip.addFile(`${zipEntry}/`, Buffer.alloc(0));
         addDir(fullPath, zipEntry);
       } else {
         zip.addFile(zipEntry, fs.readFileSync(fullPath));
